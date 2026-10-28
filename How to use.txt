@@ -1,15 +1,15 @@
-Archive Tagger
+Local Files Tagger
 
 What you need: Windows or a Mac, and Python 3 from python.org.
 The first run sets itself up (takes a minute, needs internet).
 
 Windows
   Install Python from python.org and tick "Add python.exe to PATH" in the installer.
-  Double-click "Start Archive Tagger.bat".
+  Double-click "Start Local Files Tagger.bat".
 
 Mac
   Install Python from python.org (the macOS installer).
-  The first time, right-click "Start Archive Tagger.command" and pick Open, then Open again.
+  The first time, right-click "Start Local Files Tagger.command" and pick Open, then Open again.
   (macOS blocks double-clicking downloaded scripts the first time. If there's no Open button,
   go to System Settings > Privacy & Security, scroll down, and press "Open Anyway".)
   After that you can just double-click it. A Terminal window shows the setup; close it once the app opens.

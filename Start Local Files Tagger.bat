@@ -1,10 +1,10 @@
 @echo off
-title Archive Tagger
+title Local Files Tagger
 cd /d "%~dp0"
 
 if exist ".venv\Scripts\pythonw.exe" goto run
 
-echo First run: setting up Archive Tagger (takes a minute, only happens once)...
+echo First run: setting up Local Files Tagger (takes a minute, only happens once)...
 set "PY="
 where py >nul 2>nul && set "PY=py -3"
 if not defined PY (where python >nul 2>nul && set "PY=python")

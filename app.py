@@ -1,5 +1,5 @@
 """
-Archive Tagger (friends version)
+Local Files Tagger (friends version)
 
 Tags songs and files them into a discography folder laid out like
 "1. Unreleased & Non-Streaming Discography": one "N. <Era> sessions" folder per
@@ -167,7 +167,7 @@ def remember_track(disc, track):
 
 def tracker_get(path):
     base = load_settings()["trackerUrl"].rstrip("/")
-    req = urllib.request.Request(base + path, headers={"User-Agent": "ArchiveTagger/1.0"})
+    req = urllib.request.Request(base + path, headers={"User-Agent": "LocalFilesTagger/1.0"})
     with urllib.request.urlopen(req, timeout=120) as r:
         return json.loads(r.read().decode("utf-8"))
 
@@ -338,7 +338,7 @@ def sheet_cover_file(key, era):
     if url.startswith("/"):
         url = load_settings()["trackerUrl"].rstrip("/") + url
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 ArchiveTagger/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 LocalFilesTagger/1.0"})
         with urllib.request.urlopen(req, timeout=60) as r:
             raw = r.read()
         os.makedirs(folder, exist_ok=True)
@@ -956,12 +956,12 @@ def main():
             webview = None
 
     if webview is None:
-        print("Archive Tagger running at", url, "- close this window to stop it.")
+        print("Local Files Tagger running at", url, "- close this window to stop it.")
         webbrowser.open(url)
         while True:
             time.sleep(3600)
 
-    WINDOW = webview.create_window("Archive Tagger", url, width=1320, height=880,
+    WINDOW = webview.create_window("Local Files Tagger", url, width=1320, height=880,
                                    min_size=(980, 660), background_color="#050906")
 
     def on_drop(e):

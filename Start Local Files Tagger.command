@@ -1,9 +1,9 @@
 #!/bin/bash
-# Archive Tagger launcher for macOS. Double-click it (the first time: right-click > Open).
+# Local Files Tagger launcher for macOS. Double-click it (the first time: right-click > Open).
 cd "$(dirname "$0")" || exit 1
 
 if [ ! -x ".venv/bin/python" ]; then
-  echo "First run: setting up Archive Tagger (takes a minute, only happens once)..."
+  echo "First run: setting up Local Files Tagger (takes a minute, only happens once)..."
 
   PY=""
   for c in python3.13 python3.12 python3.11 python3.10 python3; do
@@ -39,4 +39,4 @@ fi
 
 nohup .venv/bin/python app.py >/dev/null 2>&1 &
 disown
-echo "Archive Tagger is opening. You can close this Terminal window."
+echo "Local Files Tagger is opening. You can close this Terminal window."
