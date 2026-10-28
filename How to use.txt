@@ -1,0 +1,57 @@
+Archive Tagger
+
+What you need: Windows or a Mac, and Python 3 from python.org.
+The first run sets itself up (takes a minute, needs internet).
+
+Windows
+  Install Python from python.org and tick "Add python.exe to PATH" in the installer.
+  Double-click "Start Archive Tagger.bat".
+
+Mac
+  Install Python from python.org (the macOS installer).
+  The first time, right-click "Start Archive Tagger.command" and pick Open, then Open again.
+  (macOS blocks double-clicking downloaded scripts the first time. If there's no Open button,
+  go to System Settings > Privacy & Security, scroll down, and press "Open Anyway".)
+  After that you can just double-click it. A Terminal window shows the setup; close it once the app opens.
+  If it says "Permission denied": open Terminal, type  chmod +x  and a space, drag the .command file
+  into the window, press Enter, then try again.
+
+What it does
+Drop in a song, it finds it on the tracker and files it into a discography folder laid out like this:
+
+  Unreleased & Non-Streaming Discography\Yeat\
+    11. Alivë sessions\10 bones (prod. Mingo & Naawoj).mp3
+    13. 4L sessions\...
+    Deleted Tracks\...
+    Features\Unreleased Features\Song - Other Artist (feat. Yeat).mp3
+    SoundCloud\Singles\01. Detour (feat. SwagHollywood) (prod. Dee B).mp3
+
+(Folders are shown with \ here; on a Mac they use / instead.)
+
+File names:  Title [V2] (other name) (feat. X) (prod. Y) (NO OPEN VERSE edit).mp3
+Tags:        title "Title (feat. X)", artist "Yeat, X", album "Alivë (Unreleased)" or "Alivë (Hosted)",
+             the era's cover art, year, genre.
+
+First time
+1. Settings tab: pick your main music folder. Every artist gets a folder inside it.
+   If you already have a folder for an artist (like an "Unreleased & Non-Streaming Discography" folder),
+   put its path in that artist's "Their folder" box and songs get added to the folders already in it.
+2. Pick whether songs get moved or copied into their folder, and press Save settings.
+
+Tagging
+1. Tag tab: drop songs on the left (or click to pick them). mp3, m4a, wav, flac and more.
+2. Click the artist. The app searches their tracker and fills in the name, version, features, producers,
+   era and year. If it guessed wrong, click a different result or search by hand.
+3. Check "Where it goes". It picks the era's folder if you have one, or makes the next numbered one
+   ("26. COCOON sessions"). Features go to Features\..., and you can pick any other folder from the list.
+   Folders whose songs are numbered (01., 02., ...) get the next number automatically.
+4. The box under it shows the exact file name and tags. Press "Tag & file it" (or Ctrl+S, Cmd+S on a Mac).
+
+Covers tab: set your own cover for each era. An era without one uses the tracker's cover.
+If there's no cover at all, the art already in the file is kept.
+
+WAV, FLAC and other formats become a 320 kbps MP3 in the folder (change it in Settings). The original stays.
+
+Prefer one big Apple Music album with disc number = artist? Settings > "How songs are organized".
+
+If something breaks, data\log.txt has the error.

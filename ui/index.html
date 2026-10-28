@@ -1,0 +1,1320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Archive Tagger</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #050906; --bg-deep: #000402; --sheet: #101610;
+    --surface: rgba(255,255,255,.06); --surface-2: rgba(255,255,255,.11);
+    --line: rgba(255,255,255,.10);
+    --green: #4ce364; --green-bright: #6bff7c; --green-dim: rgba(76,227,100,.16);
+    --text: #f4fff6; --muted: rgba(244,255,246,.6); --dim: rgba(244,255,246,.36);
+    --ink: #04140a; --warn: #ffcf5a; --bad: #ff6b6b;
+    --r: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(1200px 600px at 20% -10%, rgba(76,227,100,.10), transparent 60%), var(--bg);
+    color: var(--text); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  input, select {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 10px; width: 100%; outline: none;
+  }
+  select option { background: #111a12; }
+  input:focus, select:focus { border-color: var(--green); }
+  label.f { display: block; }
+  label.f > span { display: block; font-size: 12px; color: var(--muted); margin: 0 0 4px 2px; }
+  .btn {
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 14px; cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { border-color: rgba(255,255,255,.25); }
+  .btn.primary { background: var(--green); color: var(--ink); border-color: var(--green); font-weight: 650; }
+  .btn.primary:hover { background: var(--green-bright); }
+  .btn.small { padding: 5px 10px; font-size: 12px; }
+  .btn.ghost { background: transparent; }
+  .btn:disabled { opacity: .45; cursor: default; }
+
+  header {
+    display: flex; align-items: center; gap: 18px; padding: 12px 20px;
+    border-bottom: 1px solid var(--line); background: rgba(0,0,0,.25);
+  }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .2px; }
+  header h1 b { color: var(--green); }
+  nav { display: flex; gap: 4px; background: var(--surface); padding: 3px; border-radius: 11px; }
+  nav button { background: none; border: 0; padding: 6px 14px; border-radius: 8px; cursor: pointer; color: var(--muted); }
+  nav button.on { background: var(--green); color: var(--ink); font-weight: 600; }
+  #trackerStatus { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+  main { flex: 1; min-height: 0; }
+  .page { display: none; height: 100%; }
+  .page.on { display: flex; }
+
+  /* --- tag page --- */
+  #queuePane {
+    width: 300px; flex: none; border-right: 1px solid var(--line); display: flex; flex-direction: column;
+  }
+  #drop {
+    margin: 14px; border: 1.5px dashed rgba(76,227,100,.45); border-radius: var(--r);
+    padding: 22px 14px; text-align: center; color: var(--muted); cursor: pointer; transition: .15s;
+  }
+  #drop.over, #drop:hover { background: var(--green-dim); color: var(--text); }
+  #drop b { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
+  #queue { flex: 1; overflow: auto; padding: 0 10px 12px; }
+  .qi {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .qi:hover { background: var(--surface); }
+  .qi.on { background: var(--surface-2); border-color: var(--line); }
+  .qi .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex: none; }
+  .qi.done .dot { background: var(--green); }
+  .qi.err .dot { background: var(--bad); }
+  .qi .t { flex: 1; min-width: 0; }
+  .qi .t div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qi .t small { color: var(--dim); font-size: 11px; }
+  .qi .x { opacity: 0; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; }
+  .qi:hover .x { opacity: 1; }
+  #queueFoot { padding: 10px 14px; border-top: 1px solid var(--line); display: flex; gap: 8px; }
+
+  #editor { flex: 1; overflow: auto; padding: 20px 26px 40px; }
+  #empty { color: var(--muted); text-align: center; margin-top: 18vh; }
+  #empty h2 { color: var(--text); font-size: 20px; margin-bottom: 6px; }
+  .filehead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+  .filehead h2 { margin: 0; font-size: 18px; word-break: break-all; }
+  .filehead .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .note { font-size: 12px; color: var(--warn); margin: -8px 0 14px; }
+
+  .section-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 18px 0 8px; }
+  #slots { display: flex; flex-wrap: wrap; gap: 6px; }
+  .slot {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px;
+    cursor: pointer; display: flex; gap: 7px; align-items: center;
+  }
+  .slot small { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .slot.on { background: var(--green); color: var(--ink); border-color: var(--green); font-weight: 600; }
+  .slot.on small { color: rgba(4,20,10,.6); }
+
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 26px; margin-top: 6px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .stack > * + * { margin-top: 12px; }
+  .inline { display: flex; gap: 6px; }
+  .inline input { flex: 1; }
+
+  .matchbox { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; }
+  .matchbox .top { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .matchbox .top input { flex: 1; }
+  #matches { max-height: 230px; overflow: auto; }
+  .m {
+    display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 7px 9px; border-radius: 9px; cursor: pointer;
+  }
+  .m:hover { background: var(--surface-2); }
+  .m.on { background: var(--green-dim); outline: 1px solid rgba(76,227,100,.5); }
+  .m .n { font-weight: 550; }
+  .m .e { color: var(--muted); font-size: 12px; grid-column: 1; }
+  .m .s { color: var(--dim); font-size: 11px; grid-row: 1 / 3; grid-column: 2; align-self: center; text-align: right; }
+  .muted { color: var(--muted); font-size: 12px; }
+
+  .coverCard { position: sticky; top: 0; }
+  .art {
+    aspect-ratio: 1; width: 100%; border-radius: var(--r); background: var(--sheet) center/cover no-repeat;
+    border: 1px solid var(--line); display: flex; align-items: center; justify-content: center;
+    color: var(--dim); text-align: center; padding: 20px; font-size: 13px;
+  }
+  .coverCard .cap { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .coverCard .row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+  .savebar { display: flex; gap: 10px; align-items: center; margin-top: 22px; }
+  .savebar .muted { margin-left: 6px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 16px; }
+  details .grid2 { margin-top: 10px; }
+  .warnText { color: var(--warn); font-size: 12px; margin-top: 4px; }
+
+  /* --- covers page --- */
+  #coversPage { flex-direction: column; padding: 18px 24px; overflow: auto; }
+  .covertop { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+  .covertop label.f { width: 260px; }
+  #coverGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; margin-top: 18px; }
+  .tile { position: relative; }
+  .tile .art { cursor: pointer; font-size: 12px; transition: .15s; }
+  .tile .art:hover, .tile.over .art { border-color: var(--green); }
+  .tile .nm { margin-top: 6px; font-size: 13px; font-weight: 550; }
+  .tile .sub { font-size: 11px; color: var(--dim); }
+  .tile .rm {
+    position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.65); border: 0; color: #fff;
+    border-radius: 999px; width: 24px; height: 24px; cursor: pointer; display: none;
+  }
+  .tile.has:hover .rm { display: block; }
+  /* no cover of yours yet: the tracker's cover shows faded until you set one */
+  .tile.sheet .art { opacity: .5; }
+  .tile.sheet .art:hover { opacity: .85; }
+  .tile .badge {
+    position: absolute; left: 6px; top: 6px; background: rgba(0,0,0,.7); color: #fff;
+    font-size: 10px; padding: 2px 7px; border-radius: 999px; pointer-events: none; display: none;
+  }
+  .tile.sheet .badge { display: block; }
+
+  /* --- settings --- */
+  #settingsPage { padding: 20px 26px; overflow: auto; display: none; }
+  #settingsPage.on { display: block; }
+  .setwrap { max-width: 900px; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { padding: 5px 4px; text-align: left; }
+  th { font-weight: 500; color: var(--muted); font-size: 12px; }
+  td input, td select { padding: 6px 8px; }
+
+  #toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0;
+    background: #1a211b; border: 1px solid var(--line); padding: 10px 16px; border-radius: 12px;
+    transition: .2s; pointer-events: none; max-width: 80vw; z-index: 9;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%); }
+  #toast.bad { border-color: var(--bad); }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--dim); border-top-color: var(--green); border-radius: 50%; animation: s .8s linear infinite; vertical-align: -2px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  #fileInput, #imgInput, #coverImgInput { display: none; }
+
+  /* format modes */
+  body.mode-disco .am, body.mode-album .dm { display: none !important; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .preview { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; font-size: 12px; }
+  .preview div + div { margin-top: 5px; }
+  .preview b { color: var(--muted); font-weight: 500; display: inline-block; width: 74px; }
+  .preview code { font-family: Consolas, ui-monospace, monospace; color: var(--text); word-break: break-all; }
+  .inline select { width: auto; flex: none; }
+  .hint { font-size: 12px; color: var(--dim); margin-top: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><b>Archive</b> Tagger</h1>
+  <nav>
+    <button data-page="tagPage" class="on">Tag</button>
+    <button data-page="coversPage">Covers</button>
+    <button data-page="settingsPage">Settings</button>
+  </nav>
+  <div id="trackerStatus"></div>
+</header>
+
+<main>
+  <!-- TAG -->
+  <section class="page on" id="tagPage">
+    <div id="queuePane">
+      <div id="drop"><b>Drop songs here</b>or click to pick files<br><small>mp3, m4a, wav, flac…</small></div>
+      <div id="queue"></div>
+      <div id="queueFoot">
+        <button class="btn small ghost" id="clearDone">Clear tagged</button>
+      </div>
+    </div>
+    <div id="editor">
+      <div id="empty"><h2>No song picked</h2>Drop a file on the left to start.</div>
+      <div id="form" hidden>
+        <div class="filehead"><h2 id="fName"></h2><span class="meta" id="fMeta"></span></div>
+        <div class="note" id="fNote" hidden></div>
+
+        <div class="section-label">Artist</div>
+        <div id="slots"></div>
+
+        <div class="cols">
+          <div>
+            <div class="section-label">Find it on the tracker</div>
+            <div class="matchbox">
+              <div class="top">
+                <select id="trackerSel" style="width:210px"></select>
+                <input id="search" placeholder="Search this tracker">
+                <button class="btn small" id="reloadTracker" title="Reload tracker">↻</button>
+              </div>
+              <div id="matches"></div>
+            </div>
+
+            <div class="section-label">Tags</div>
+            <div class="stack">
+              <label class="f"><span class="am">Title</span><span class="dm">Song name (just the name, the rest goes below)</span>
+                <div class="inline"><input id="title"><button class="btn small am" id="useTrackerName" title="Use the tracker's name">Use tracker name</button></div>
+              </label>
+              <div class="dm stack">
+                <div class="grid3">
+                  <label class="f"><span>Version (V1, V2…)</span><input id="ver" placeholder="none"></label>
+                  <label class="f"><span>Also known as</span><input id="aka" placeholder="other names, comma between"></label>
+                  <label class="f"><span>Edit / file note</span><input id="note" list="noteList" placeholder="none"></label>
+                </div>
+                <datalist id="noteList"><option value="NO OPEN VERSE edit"><option value="NO TAGS edit"><option value="TAGGED"><option value="Snippet"><option value="CDQ"><option value="Stem Edit"></datalist>
+                <div class="grid2">
+                  <label class="f"><span>Other artists on it</span>
+                    <div class="inline"><select id="featType"><option value="feat">feat.</option><option value="with">with</option></select><input id="feat" placeholder="none"></div>
+                  </label>
+                  <label class="f"><span>Producers</span><input id="prod" placeholder="none"></label>
+                </div>
+                <label class="f"><span>Whose song is it? Leave empty unless it's someone else's song this artist is featured on</span><input id="mainArtist" placeholder="this artist's own song"></label>
+              </div>
+              <label class="f"><span class="am">Artist (as it shows in Apple Music)</span><span class="dm">Artist tag (filled in for you)</span><input id="artist" list="artistList"></label>
+              <datalist id="artistList"></datalist>
+              <div class="grid4">
+                <label class="f am"><span>Disc (artist #)</span><input id="disc" type="number" min="1"></label>
+                <label class="f am"><span>Track #</span><input id="track" type="number" min="1"></label>
+                <label class="f"><span>Year</span><input id="year" inputmode="numeric"></label>
+                <label class="f"><span>Genre</span><input id="genre"></label>
+              </div>
+              <div class="warnText am" id="trackWarn" hidden></div>
+            </div>
+
+            <div class="dm">
+              <div class="section-label">Where it goes</div>
+              <div class="stack">
+                <div class="grid4" style="grid-template-columns: 2.4fr 1fr .8fr">
+                  <label class="f"><span>Folder</span><select id="folder"></select></label>
+                  <label class="f"><span>Released?</span><select id="release"><option value="Unreleased">Unreleased</option><option value="Hosted">Hosted (was released, not on streaming)</option></select></label>
+                  <label class="f"><span>Track # (numbered folders)</span><input id="dtrack" type="number" min="1" placeholder="none"></label>
+                </div>
+                <label class="f" id="customFolderRow" hidden><span>Folder path inside the artist's folder (use / or \ between folders)</span><input id="customFolder" placeholder="e.g. 26. COCOON sessions"></label>
+                <div class="preview">
+                  <div><b>File</b><code id="pvFile"></code></div>
+                  <div><b>Title tag</b><code id="pvTitle"></code></div>
+                  <div><b>Album tag</b><code id="pvAlbum"></code></div>
+                  <div><b>Saved in</b><code id="pvWhere"></code></div>
+                </div>
+              </div>
+            </div>
+            <details>
+              <summary>Album fields</summary>
+              <div class="grid2">
+                <label class="f"><span>Album</span><input id="album"></label>
+                <label class="f"><span>Album artist</span><input id="albumArtist"></label>
+              </div>
+            </details>
+
+            <div class="savebar">
+              <button class="btn primary" id="saveBtn"><span class="am">Tag file</span><span class="dm">Tag &amp; file it</span></button>
+              <button class="btn" id="skipBtn">Skip</button>
+              <span class="muted" id="saveHint">Ctrl+S tags and moves to the next song</span>
+            </div>
+          </div>
+
+          <div class="coverCard">
+            <div class="section-label">Era &amp; cover</div>
+            <label class="f"><span>Era</span><select id="era"></select></label>
+            <div style="height:10px"></div>
+            <div class="art" id="art">No cover</div>
+            <div class="cap" id="artCap"></div>
+            <div class="row">
+              <button class="btn small" id="setEraCover">Set cover for this era</button>
+              <button class="btn small" id="oneOff">Use image for this song only</button>
+              <button class="btn small ghost" id="clearOneOff" hidden>Back to era cover</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COVERS -->
+  <section class="page" id="coversPage">
+    <div class="covertop">
+      <label class="f"><span>Artist</span><select id="cvArtist"></select></label>
+      <label class="f"><span>Add an era the tracker doesn't have</span>
+        <div class="inline"><input id="cvNewEra" placeholder="e.g. Edits"><button class="btn" id="cvAddEra">Add</button></div>
+      </label>
+      <span class="muted" style="padding-bottom:10px">Click a square or drop an image on it. Faded squares show the tracker's own cover, which is used until you set yours. "Default" is for eras with no cover here or on the tracker.</span>
+    </div>
+    <div id="coverGrid"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="page" id="settingsPage">
+    <div class="setwrap stack">
+      <label class="f"><span>How songs are organized</span>
+        <select id="sFormat">
+          <option value="discography">Discography folders: a folder per era, like "1. Unreleased &amp; Non-Streaming Discography"</option>
+          <option value="album">One big album: everything tagged in place, disc number = artist</option>
+        </select>
+      </label>
+      <div class="dm stack">
+        <label class="f"><span>Main music folder. Each artist gets a folder in here, unless you give them their own folder in the table below</span>
+          <div class="inline"><input id="sLibrary"><button class="btn" data-browse="sLibrary">Browse</button></div></label>
+        <div class="grid2">
+          <label class="f"><span>After tagging, the song is</span>
+            <select id="sAfter"><option value="move">Moved into its folder</option><option value="copy">Copied into its folder (original stays where it was)</option></select>
+          </label>
+          <label class="f"><span>Comment tag (optional, e.g. where the files came from)</span><input id="sComment" placeholder="none"></label>
+        </div>
+      </div>
+      <div class="am stack">
+        <label class="f"><span>Album folder (used to find the next free track number)</span>
+          <div class="inline"><input id="sAlbumFolder"><button class="btn" data-browse="sAlbumFolder">Browse</button></div></label>
+        <div class="grid2">
+          <label class="f"><span>Album</span><input id="sAlbum"></label>
+          <label class="f"><span>Album artist</span><input id="sAlbumArtist"></label>
+          <label class="f"><span>Disc total (the "/100" part)</span><input id="sDiscTotal" type="number"></label>
+          <label class="f"><span>Comment tag (optional)</span><input id="sComment2" placeholder="none"></label>
+        </div>
+      </div>
+      <div class="grid2">
+        <label class="f"><span>Default genre</span><input id="sGenre"></label>
+        <label class="f"><span>Tracker site</span><input id="sTracker"></label>
+        <label class="f"><span>WAV / FLAC / other files get converted to</span>
+          <select id="sConvert"><option value="mp3">MP3, 320 kbps</option><option value="aac">M4A, AAC 256 kbps</option><option value="alac">M4A, Apple Lossless (bigger files)</option></select>
+        </label>
+      </div>
+      <div class="section-label">Artists</div>
+      <table>
+        <thead><tr><th class="am" style="width:80px">Disc</th><th>Button name</th><th>Artist tag</th><th>Tracker</th><th class="dm">Their folder (empty = main folder &gt; artist)</th><th></th></tr></thead>
+        <tbody id="slotRows"></tbody>
+      </table>
+      <div><button class="btn small" id="addSlot">Add artist</button></div>
+      <div class="savebar"><button class="btn primary" id="saveSettings">Save settings</button></div>
+    </div>
+  </section>
+</main>
+
+<input type="file" id="fileInput" multiple accept="audio/*,.mp3,.m4a,.wav,.flac,.aif,.aiff,.ogg,.opus">
+<input type="file" id="imgInput" accept="image/*">
+<input type="file" id="coverImgInput" accept="image/*">
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
+const SEP = IS_MAC ? "/" : "\\";  // how paths are shown; the app accepts either
+if (IS_MAC && document.getElementById("saveHint")) document.getElementById("saveHint").textContent = "⌘S tags and moves to the next song";
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+async function api(path, body) {
+  const opts = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if (!r.ok || (j && j.error)) throw new Error((j && j.error) || r.statusText);
+  return j;
+}
+
+let toastTimer;
+function toast(msg, bad) {
+  const t = $("#toast");
+  t.textContent = msg; t.className = "show" + (bad ? " bad" : "");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = "", bad ? 5000 : 2600);
+}
+
+function readImage(file) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+}
+
+/* ------------------------------------------------------------ state */
+const S = {
+  settings: null,
+  trackers: [],           // [{key,name}]
+  songs: {},              // key -> songs[]
+  loading: {},            // key -> promise
+  queue: [],              // items
+  current: null,
+  covers: {},             // coverKey -> {files, custom}
+  sheet: {},              // tracker key -> promise of {eras, pending}: eras with a cover in the tracker sheet
+  folders: {},            // disc -> promise of the artist folder scan (discography mode)
+};
+const disco = () => (S.settings.format || "discography") === "discography";
+function applyMode() {
+  document.body.classList.toggle("mode-disco", disco());
+  document.body.classList.toggle("mode-album", !disco());
+}
+
+/* ------------------------------------------------------------ discography naming
+   Same layout as "1. Unreleased & Non-Streaming Discography":
+   file   Title [V2] (Other Name) (feat. X) (prod. Y) (NO OPEN VERSE edit).mp3
+   title  Title (feat. X)          artist  Yeat, X
+   album  <Era> (Unreleased) or <Era> (Hosted) in an "N. <Era> sessions" folder */
+const NOTE_RX = /\b(edit|tagged|no tags|snippet|cdq|hq|lq|stem|instrumental|acapella|remaster(ed)?|mixed|unmixed|leak)\b/i;
+function splitArtists(s) { return String(s || "").split(/\s*(?:,|&|\band\b|\bx\b)\s*/i).map(x => x.trim()).filter(Boolean); }
+function same(a, b) { return fold(a).trim() === fold(b).trim(); }
+
+function parseTrackerName(name) {
+  // trackers put emoji tags in front of names (✨, ⭐, 🗑️…); file names don't have them
+  const lines = String(name || "").replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "").split(/\n/).map(x => x.trim()).filter(Boolean);
+  let first = lines[0] || "";
+  const out = { title: "", ver: "", featType: "feat", feat: "", prod: "", aka: [], mainArtist: "" };
+  const v = first.match(/\[\s*(V\d+[^\]]*)\]/i);
+  if (v) { out.ver = v[1].trim(); first = first.replace(v[0], " "); }
+  const groups = [];
+  first = first.replace(/\(([^()]*)\)/g, (m, g) => { groups.push(g); return " "; }).replace(/\s+/g, " ").trim();
+  lines.slice(1).join(" ").replace(/\(([^()]*)\)/g, (m, g) => { groups.push(g); return ""; });
+  const dash = first.match(/^(.+?)\s+-\s+(.+)$/);
+  if (dash) { out.mainArtist = dash[1].trim(); first = dash[2].trim(); }
+  out.title = first;
+  groups.forEach(g => {
+    g = g.trim(); let m;
+    if ((m = g.match(/^(?:feat\.?|ft\.?|featuring)\s+(.+)$/i))) { out.featType = "feat"; out.feat = m[1].trim(); }
+    else if ((m = g.match(/^with\s+(.+)$/i))) { out.featType = "with"; out.feat = m[1].trim(); }
+    else if ((m = g.match(/^prod\.?\s*(?:by\s+)?(.+)$/i))) { out.prod = m[1].trim(); }
+    else if (g && !/^v\d+$/i.test(g)) out.aka.push(g);
+  });
+  return out;
+}
+
+function slotArtist(it) { return (slotByDisc(it.disc) || {}).artist || ""; }
+
+function computeNames(it) {
+  const me = slotArtist(it);
+  const feats = splitArtists(it.feat);
+  const main = (it.mainArtist || "").trim();
+  const isFeature = !!main && !same(main, me);
+  const primary = isFeature ? main : (me || splitArtists(it.origArtist)[0] || "");
+  const people = [];
+  [primary, ...feats, ...(isFeature && me ? [me] : [])].forEach(a => { if (a && !people.some(p => same(p, a))) people.push(a); });
+  const others = feats.filter(a => !same(a, me) && !same(a, primary));
+  const fw = it.featType === "with" ? "with" : "feat.";
+  const othersText = others.length === feats.length ? it.feat.trim() : others.join(" & ");
+  const titleTag = it.title.trim() + (others.length ? ` (${fw} ${othersText})` : "");
+  const aka = String(it.aka || "").split(/\s*,\s*/).filter(a => a && looseEra(a) !== looseEra(it.title));
+  let file = it.title.trim();
+  if (it.ver) file += ` [${it.ver.replace(/^\[|\]$/g, "")}]`;
+  aka.forEach(a => file += ` (${a})`);
+  if (isFeature) file += ` - ${main}`;
+  if (it.feat.trim()) file += ` (${fw} ${it.feat.trim()})`;
+  if (it.prod.trim()) file += ` (prod. ${it.prod.trim()})`;
+  if (it.note.trim()) file += ` (${it.note.trim()})`;
+  const f = currentFolder(it);
+  if (it.dtrack) file = String(it.dtrack).padStart(2, "0") + ". " + file;
+  file = file.replace(/[<>:"\/\\|?*]/g, "").replace(/\s+/g, " ").trim();
+  let album;
+  if (!f || f.info.sessions) {
+    const base = (f && f.info && albumBase(f.info, it.era)) || it.era || (f ? f.era : "") || titleTag;
+    album = `${base} (${it.release || "Unreleased"})`;
+  } else if (f.info && f.info.albumShared && f.info.albums[0]) album = f.info.albums[0];
+  else album = titleTag;
+  return { titleTag, artistTag: people.join(", "), albumArtist: primary, file, album, isFeature };
+}
+
+function albumBase(info, era) {
+  const bases = (info.albums || []).map(a => a.replace(/\s*\((Unreleased|Hosted)\)\s*$/i, "").trim()).filter(Boolean);
+  if (!bases.length) return info.sessions ? info.era : "";
+  return bases.find(b => looseEra(b) === looseEra(era)) || bases[0];
+}
+
+/* ------------------------------------------------------------ discography folders */
+function folderScan(disc, refresh) {
+  if (!S.folders[disc] || refresh) {
+    S.folders[disc] = api(`/api/folders?disc=${disc}`).catch(e => { delete S.folders[disc]; toast("Couldn't read the artist folder: " + e.message, true); return { folders: [], standard: [], nextEra: 1, root: "" }; });
+  }
+  return S.folders[disc];
+}
+const looseFolder = s => looseEra(String(s || "").replace(/\$/g, "s"));
+const stripBr = s => String(s || "").replace(/[\(\[][^\)\]]*[\)\]]/g, " ");
+
+function matchEraFolder(scan, era) {
+  if (!era) return null;
+  const L = looseFolder(era), SB = looseFolder(stripBr(era));
+  const tokens = (era.match(/[\(\[]([^\)\]]*)[\)\]]/g) || []).map(t => looseFolder(t)).filter(Boolean);
+  let best = null, bestScore = 0;
+  scan.folders.forEach(f => {
+    if (!f.sessions && !f.files) return;
+    const bases = (f.albums || []).map(a => a.replace(/\s*\((Unreleased|Hosted)\)\s*$/i, ""));
+    let score = 0;
+    if (looseFolder(f.era) === L || bases.some(b => looseFolder(b) === L)) score = 1;
+    else if (SB && (looseFolder(stripBr(f.era)) === SB || bases.some(b => looseFolder(stripBr(b)) === SB))) {
+      score = .8;
+      const nm = looseFolder(f.name);
+      if (tokens.length && tokens.every(t => nm.includes(t))) score = .9;
+    }
+    if (f.sessions) score += .01;
+    if (f.files) score += .005;
+    if (score > bestScore) { best = f; bestScore = score; }
+  });
+  return bestScore >= .8 ? best.rel : null;
+}
+
+function newEraRel(scan, era) {
+  const clean = String(era || "").replace(/[<>:"\/\\|?*]/g, "").trim();
+  return clean ? `${scan.nextEra}. ${clean} sessions` : "";
+}
+
+// what the folder dropdown currently points at
+function currentFolder(it) {
+  const scan = it._scan;
+  if (!scan) return null;
+  const rel = it.folder === "__custom__" ? (it.customFolder || "").trim() : it.folder;
+  if (!rel) return null;
+  const info = scan.folders.find(f => f.rel.toLowerCase() === rel.toLowerCase());
+  if (info) return { rel, info, era: info.era };
+  const name = rel.split("\\").pop();
+  const sessions = /\ssessions$/i.test(name);
+  return { rel, isNew: true, era: name.replace(/^\d+(?:\.\d+)?(?:-\d+)?\.\s+/, "").replace(/\s+sessions$/i, ""), info: { sessions, albums: [], era: "" } };
+}
+
+function chooseFolder(it) {
+  const scan = it._scan; if (!scan) return;
+  const remembered = (S.settings.eraFolders || {})[it.tracker || ""]?.[it.era];
+  const exists = rel => scan.folders.some(f => f.rel.toLowerCase() === String(rel).toLowerCase());
+  const isFeature = it.mainArtist.trim() && !same(it.mainArtist, slotArtist(it));
+  let rel = null;
+  if (isFeature) rel = it.release === "Hosted" ? "Features\\Released Features (Non-Streaming)" : "Features\\Unreleased Features";
+  else if (remembered && exists(remembered)) rel = remembered;
+  else rel = matchEraFolder(scan, it.era) || (it.era ? newEraRel(scan, it.era) : "Other Singles");
+  it.folder = rel; it.customFolder = "";
+  setTrackFromFolder(it);
+}
+
+function setTrackFromFolder(it) {
+  const f = currentFolder(it);
+  it.dtrack = f && f.info && f.info.numbered ? f.info.nextNum : "";
+}
+
+function renderFolders() {
+  const it = S.current, scan = it._scan;
+  const sel = $("#folder");
+  if (!scan) { sel.innerHTML = `<option>Loading folders…</option>`; return; }
+  const have = new Set(scan.folders.map(f => f.rel.toLowerCase()));
+  const opts = [];
+  const eraNew = newEraRel(scan, it.era);
+  if (eraNew && !have.has(eraNew.toLowerCase()) && !matchEraFolder(scan, it.era)) opts.push(`<option value="${esc(eraNew)}">+ New folder: ${esc(eraNew)}</option>`);
+  scan.folders.forEach(f => {
+    const pad = "\u00a0\u00a0\u00a0".repeat(f.depth - 1);
+    opts.push(`<option value="${esc(f.rel)}">${pad}${esc(f.name)}${f.files ? ` (${f.files})` : ""}</option>`);
+  });
+  (scan.standard || []).filter(r => !have.has(r.toLowerCase())).forEach(r => opts.push(`<option value="${esc(r)}">+ New folder: ${esc(r)}</option>`));
+  if (it.folder && it.folder !== "__custom__" && !opts.some(o => o.includes(`value="${esc(it.folder)}"`))) opts.unshift(`<option value="${esc(it.folder)}">+ New folder: ${esc(it.folder)}</option>`);
+  opts.push(`<option value="__custom__">Somewhere else… (type it)</option>`);
+  sel.innerHTML = opts.join("");
+  sel.value = it.folder || "";
+  $("#customFolderRow").hidden = it.folder !== "__custom__";
+  $("#customFolder").value = it.customFolder || "";
+}
+
+function updatePreview() {
+  const it = S.current; if (!it || !disco()) return;
+  const n = computeNames(it);
+  if (!it.artistEdited) { it.artist = n.artistTag; $("#artist").value = it.artist; }
+  if (!it.albumEdited) { it.album = n.album; it.albumArtist = n.albumArtist; $("#album").value = it.album; $("#albumArtist").value = it.albumArtist; }
+  const scan = it._scan, f = currentFolder(it);
+  const ext = it.needsConvert ? ((S.settings.convertTo || "mp3") === "mp3" ? ".mp3" : ".m4a") : it.ext;
+  $("#pvFile").textContent = (n.file || "(no name yet)") + ext;
+  $("#pvTitle").textContent = n.titleTag;
+  $("#pvAlbum").textContent = it.album;
+  $("#pvWhere").textContent = scan ? (f ? `${scan.root}${SEP}${f.rel.split("\\").join(SEP)}${f.isNew ? "  (new folder)" : ""}` : "pick a folder") + (scan.exists ? "" : "  (artist folder will be created)") : "…";
+}
+
+async function loadFolders(it, refresh) {
+  if (!disco()) return;
+  const scan = await folderScan(it.disc, refresh);
+  if (S.current !== it) { it._scan = scan; return; }
+  it._scan = scan;
+  if (!it.folderPicked) chooseFolder(it);
+  renderFolders();
+  $("#dtrack").value = it.dtrack || "";
+  updatePreview();
+}
+let uid = 0;
+
+/* ------------------------------------------------------------ fuzzy matching */
+function fold(s) {
+  return String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
+    .replace(/&/g, " and ").replace(/\$/g, "s");
+}
+function core(s) {
+  return fold(s).replace(/[\(\[\{][^\)\]\}]*[\)\]\}]/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+function variants(name) {
+  const out = new Set([core(name)]);
+  (fold(name).match(/[\(\[\{]([^\)\]\}]*)[\)\]\}]/g) || []).forEach(p => {
+    const inner = p.slice(1, -1).replace(/^(feat|ft|with|prod|v\d|og|remix)\b.*$/, "").replace(/[^a-z0-9]+/g, " ").trim();
+    if (inner.length > 2) out.add(inner);
+  });
+  // "Song A / Song B" style names
+  fold(name).split(/\s+\/\s+|\s+aka\s+/).forEach(part => { const c = core(part); if (c) out.add(c); });
+  return [...out].filter(Boolean);
+}
+function bigrams(s) { s = s.replace(/ /g, ""); const m = new Map(); for (let i = 0; i < s.length - 1; i++) { const b = s.slice(i, i + 2); m.set(b, (m.get(b) || 0) + 1); } return m; }
+function dice(a, b) {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.replace(/ /g, "") === b.replace(/ /g, "")) return .98;
+  const A = bigrams(a), B = bigrams(b); let inter = 0, tot = 0;
+  A.forEach((n, k) => { inter += Math.min(n, B.get(k) || 0); tot += n; }); B.forEach(n => tot += n);
+  let score = tot ? (2 * inter) / tot : 0;
+  if (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a))) score = Math.max(score, .8);
+  return score;
+}
+function scoreSong(query, song) {
+  const q = core(query);
+  if (!q) return 0;
+  if (!song._v) song._v = variants(song.name);
+  return Math.max(...song._v.map(v => dice(q, v)));
+}
+function findMatches(query, songs, limit = 25) {
+  const seen = new Set();
+  return songs.map(s => ({ s, score: scoreSong(query, s) }))
+    .filter(x => x.score > .34)
+    .sort((a, b) => b.score - a.score)
+    .filter(x => { const k = core(x.s.name) + "|" + x.s.era; if (seen.has(k)) return false; seen.add(k); return true; })
+    .slice(0, limit);
+}
+
+/* ------------------------------------------------------------ tracker data */
+function setStatus(html) { $("#trackerStatus").innerHTML = html; }
+
+async function loadTrackers() {
+  setStatus('<span class="spin"></span> Loading tracker list…');
+  try {
+    const d = await api("/api/trackers");
+    S.trackers = d.artists.map(a => ({ key: a.key, name: a.name }));
+    setStatus(d.stale ? "Tracker offline, using saved copy" : `${S.trackers.length} trackers`);
+  } catch (e) {
+    S.trackers = [];
+    setStatus("Tracker unreachable - you can still tag by hand");
+  }
+  fillTrackerSelects();
+}
+
+function trackerName(key) {
+  const t = S.trackers.find(t => t.key === key);
+  return t ? t.name : key;
+}
+
+function songsFor(key, refresh) {
+  if (!key) return Promise.resolve([]);
+  if (S.songs[key] && !refresh) return Promise.resolve(S.songs[key]);
+  if (S.loading[key] && !refresh) return S.loading[key];
+  setStatus(`<span class="spin"></span> Loading ${esc(trackerName(key))} tracker…`);
+  const p = api(`/api/songs?artist=${encodeURIComponent(key)}${refresh ? "&refresh=1" : ""}`)
+    .then(list => { S.songs[key] = list; setStatus(`${esc(trackerName(key))}: ${list.length} songs`); return list; })
+    .catch(e => { setStatus(`Couldn't load ${esc(trackerName(key))}`); toast("Tracker didn't load: " + e.message, true); return []; })
+    .finally(() => delete S.loading[key]);
+  S.loading[key] = p;
+  return p;
+}
+
+function erasOf(key) {
+  const list = S.songs[key] || [];
+  const map = new Map();
+  list.forEach(s => {
+    if (!s.era) return;
+    const e = map.get(s.era) || { name: s.era, year: s.eraYear, count: 0 };
+    e.count++; if (!e.year && s.eraYear) e.year = s.eraYear;
+    map.set(s.era, e);
+  });
+  const custom = (S.covers[key]?.custom || []).filter(n => !map.has(n)).map(n => ({ name: n, custom: true, count: 0 }));
+  return [...map.values(), ...custom];
+}
+
+/* ------------------------------------------------------------ covers */
+async function coverInfo(key, refresh) {
+  if (!key) return { files: {}, custom: [] };
+  if (!S.covers[key] || refresh) S.covers[key] = await api(`/api/covers?key=${encodeURIComponent(key)}`);
+  return S.covers[key];
+}
+async function sha14(text) {
+  const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(text.trim().toLowerCase()));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 14);
+}
+async function coverUrl(key, era) {
+  if (!key) return null;
+  const info = await coverInfo(key);
+  const file = era === "_default" ? "_default.jpg" : (era ? (await sha14(era)) + ".jpg" : null);
+  if (file && info.files[file]) return `/cover?key=${encodeURIComponent(key)}&era=${encodeURIComponent(era)}&v=${info.files[file]}`;
+  return null;
+}
+// the tracker's own era covers (read off the sheet by tracker-player)
+function sheetInfo(key, refresh) {
+  if (!key || key.startsWith("slot-")) return Promise.resolve({ eras: [] });
+  if (!S.sheet[key] || refresh) {
+    S.sheet[key] = api(`/api/sheet-covers?key=${encodeURIComponent(key)}${refresh ? "&refresh=1" : ""}`)
+      .catch(() => { delete S.sheet[key]; return { eras: [] }; });
+  }
+  return S.sheet[key];
+}
+const looseEra = e => String(e || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+async function sheetCoverUrl(key, era) {
+  if (!era || era === "_default") return null;
+  const info = await sheetInfo(key);
+  const want = looseEra(era);
+  if (!(info.eras || []).some(e => e === era || (want && looseEra(e) === want))) return null;
+  return `/sheet-cover?key=${encodeURIComponent(key)}&era=${encodeURIComponent(era)}`;
+}
+// yours for the era, else the tracker's, else your artist default
+async function effectiveCover(key, era) {
+  const own = await coverUrl(key, era);
+  if (own) return { url: own, from: "era" };
+  const sheet = await sheetCoverUrl(key, era);
+  if (sheet) return { url: sheet, from: "sheet" };
+  const def = await coverUrl(key, "_default");
+  return def ? { url: def, from: "default" } : null;
+}
+async function setCover(key, era, dataUrl) {
+  await api("/api/cover", { key, era, image: dataUrl });
+  await coverInfo(key, true);
+}
+
+/* ------------------------------------------------------------ queue */
+function slotByDisc(d) { return S.settings.slots.find(s => +s.disc === +d); }
+
+function guessSlot(info) {
+  const a = fold(info.artist).split(/\s*(?:&|,| x | and |feat)\s*/)[0].trim();
+  if (a) {
+    const hit = S.settings.slots.find(s => fold(s.artist) === a || fold(s.name) === a);
+    if (hit) return hit.disc;
+  }
+  const m = info.name.match(/^(\d+)-\d+\s/);
+  if (m && slotByDisc(m[1])) return +m[1];
+  return S.settings.lastSlot || S.settings.slots[0]?.disc || 1;
+}
+
+function addInfos(infos) {
+  let first = null;
+  infos.forEach(info => {
+    if (!info.supported) { toast(`${info.name}: that file type isn't supported`, true); return; }
+    if (S.queue.some(q => q.path === info.path && q.status !== "done")) return;
+    const disc = guessSlot(info);
+    const slot = slotByDisc(disc) || {};
+    const item = {
+      id: ++uid, path: info.path, name: info.name, ext: info.ext, duration: info.duration,
+      needsConvert: info.needsConvert, origArtist: info.artist, status: "todo",
+      title: info.title, artist: info.artist || slot.artist || "", disc, track: null, trackEdited: false,
+      year: "", genre: S.settings.genre, album: S.settings.album, albumArtist: S.settings.albumArtist,
+      tracker: slot.tracker || "", era: "", match: null, oneOff: null, autoMatched: false,
+      ver: "", aka: "", note: "", featType: "feat", feat: "", prod: "", mainArtist: "",
+      folder: "", customFolder: "", folderPicked: false, release: "Unreleased", dtrack: "",
+      artistEdited: false, albumEdited: false,
+    };
+    if (disco()) {
+      // pull the details out of the file name, e.g. "Song [V2] (feat. X) (prod. Y) (NO TAGS edit)"
+      const p = parseTrackerName(info.title);
+      item.title = p.title || info.title; item.ver = p.ver; item.feat = p.feat; item.featType = p.featType;
+      item.prod = p.prod; item.mainArtist = p.mainArtist && !same(p.mainArtist, slot.artist) ? p.mainArtist : "";
+      const notes = p.aka.filter(a => NOTE_RX.test(a));
+      item.note = notes.join(") ("); item.aka = p.aka.filter(a => !NOTE_RX.test(a)).join(", ");
+      (info.name.match(/\(([^()]*)\)/g) || []).map(g => g.slice(1, -1)).forEach(g => { if (NOTE_RX.test(g) && !item.note) item.note = g; });
+    }
+    S.queue.push(item);
+    if (!first) first = item;
+  });
+  renderQueue();
+  if (first && (!S.current || S.current.status === "done")) select(first.id);
+}
+
+window.app = {
+  async addPaths(paths) {
+    try { addInfos(await api("/api/inspect", { paths })); } catch (e) { toast(e.message, true); }
+  }
+};
+
+function renderQueue() {
+  $("#queue").innerHTML = S.queue.map(q => `
+    <div class="qi ${q.status === "done" ? "done" : ""} ${q.status === "err" ? "err" : ""} ${S.current && S.current.id === q.id ? "on" : ""}" data-id="${q.id}">
+      <span class="dot"></span>
+      <div class="t"><div>${esc(q.title || q.name)}</div>
+        <small>${q.status === "done" ? (q.filedIn ? `filed in ${esc(q.filedIn)}` : `tagged ${q.disc}-${q.track}`) : esc(q.name)}</small></div>
+      <button class="x" data-rm="${q.id}" title="Remove">×</button>
+    </div>`).join("");
+}
+
+$("#queue").addEventListener("click", e => {
+  const rm = e.target.closest("[data-rm]");
+  if (rm) {
+    const id = +rm.dataset.rm;
+    S.queue = S.queue.filter(q => q.id !== id);
+    if (S.current && S.current.id === id) { S.current = null; showForm(false); }
+    renderQueue(); return;
+  }
+  const it = e.target.closest(".qi");
+  if (it) select(+it.dataset.id);
+});
+$("#clearDone").onclick = () => { S.queue = S.queue.filter(q => q.status !== "done"); if (S.current && !S.queue.includes(S.current)) { S.current = null; showForm(false); } renderQueue(); };
+
+/* ------------------------------------------------------------ editor */
+function showForm(on) { $("#form").hidden = !on; $("#empty").hidden = on; }
+
+async function select(id) {
+  stash();
+  const item = S.queue.find(q => q.id === id);
+  if (!item) return;
+  S.current = item;
+  renderQueue();
+  showForm(true);
+  $("#fName").textContent = item.name;
+  $("#fMeta").textContent = [item.ext.slice(1).toUpperCase(), item.duration ? `${Math.floor(item.duration / 60)}:${String(item.duration % 60).padStart(2, "0")}` : "", item.status === "done" ? "already tagged" : ""].filter(Boolean).join(" · ");
+  const note = $("#fNote");
+  note.hidden = !item.needsConvert;
+  const outExt = (S.settings.convertTo || "mp3") === "mp3" ? ".mp3" : ".m4a";
+  note.textContent = !item.needsConvert ? "" : disco()
+    ? `${item.ext} files can't hold these tags, so a tagged ${outExt} is made in the folder. The original stays where it is.`
+    : `Apple Music can't read tags in ${item.ext} files, so a tagged ${outExt} copy will be made next to it. The original stays untouched.`;
+  renderSlots();
+  ["title", "artist", "disc", "year", "genre", "album", "albumArtist", "ver", "aka", "note", "featType", "feat", "prod", "mainArtist", "release", "dtrack"].forEach(k => $("#" + k).value = item[k] ?? "");
+  if (disco()) { renderFolders(); loadFolders(item); }
+  $("#search").value = "";
+  if (disco()) { /* no disc/track numbers in this mode */ }
+  else if (!item.trackEdited || item.track == null) await refreshTrack();
+  else { $("#track").value = item.track; checkTrack(); }
+  $("#trackerSel").value = item.tracker || "";
+  await loadForTracker(item);
+}
+
+function stash() {
+  const it = S.current;
+  if (!it || $("#form").hidden) return;
+  ["title", "artist", "year", "genre", "album", "albumArtist", "ver", "aka", "note", "featType", "feat", "prod", "mainArtist", "release", "customFolder"].forEach(k => it[k] = $("#" + k).value);
+  it.dtrack = +$("#dtrack").value || "";
+  it.disc = +$("#disc").value || it.disc;
+  it.track = +$("#track").value || it.track;
+}
+
+// discography fields: every change updates the preview
+["ver", "aka", "note", "feat", "prod", "title"].forEach(id => $("#" + id).addEventListener("input", () => { if (!S.current) return; S.current[id] = $("#" + id).value; updatePreview(); }));
+$("#featType").addEventListener("change", () => { S.current.featType = $("#featType").value; updatePreview(); });
+$("#mainArtist").addEventListener("input", () => { const it = S.current; it.mainArtist = $("#mainArtist").value; if (!it.folderPicked) { chooseFolder(it); renderFolders(); $("#dtrack").value = it.dtrack || ""; } updatePreview(); });
+$("#release").addEventListener("change", () => { const it = S.current; it.release = $("#release").value; if (!it.folderPicked && it.mainArtist) { chooseFolder(it); renderFolders(); } updatePreview(); });
+$("#folder").addEventListener("change", () => {
+  const it = S.current; it.folder = $("#folder").value; it.folderPicked = true;
+  $("#customFolderRow").hidden = it.folder !== "__custom__";
+  setTrackFromFolder(it); $("#dtrack").value = it.dtrack || ""; updatePreview();
+});
+$("#customFolder").addEventListener("input", () => { S.current.customFolder = $("#customFolder").value; updatePreview(); });
+$("#dtrack").addEventListener("input", () => { S.current.dtrack = +$("#dtrack").value || ""; updatePreview(); });
+$("#artist").addEventListener("input", () => { if (S.current) { S.current.artistEdited = true; S.current.artist = $("#artist").value; } });
+["album", "albumArtist"].forEach(id => $("#" + id).addEventListener("input", () => { if (S.current) { S.current.albumEdited = true; S.current[id] = $("#" + id).value; updatePreview(); } }));
+
+function renderSlots() {
+  const it = S.current;
+  $("#slots").innerHTML = S.settings.slots.map(s =>
+    `<button class="slot ${+s.disc === +it.disc ? "on" : ""}" data-disc="${s.disc}"><small>${s.disc}</small>${esc(s.name)}</button>`).join("");
+}
+
+$("#slots").addEventListener("click", async e => {
+  const b = e.target.closest(".slot"); if (!b) return;
+  const it = S.current; stash();
+  const prev = slotByDisc(it.disc) || {};
+  const slot = slotByDisc(b.dataset.disc);
+  it.disc = +slot.disc;
+  // swap the artist name over unless it was typed by hand
+  if (!it.artist || it.artist === prev.artist || it.artist === it.origArtist) it.artist = slot.artist || it.artist;
+  $("#artist").value = it.artist; $("#disc").value = it.disc;
+  it.trackEdited = false; if (!disco()) await refreshTrack();
+  if (disco()) { it.artistEdited = false; it.albumEdited = false; it.folderPicked = false; it._scan = null; renderFolders(); loadFolders(it); }
+  if (slot.tracker !== undefined && slot.tracker !== it.tracker && slot.tracker) {
+    it.tracker = slot.tracker; it.era = ""; it.match = null; it.autoMatched = false;
+    $("#trackerSel").value = it.tracker;
+    loadForTracker(it);
+  }
+  renderSlots();
+});
+
+async function refreshTrack() {
+  const it = S.current;
+  try {
+    const d = await api(`/api/next?disc=${it.disc}`);
+    it._used = d.used;
+    // numbers other queued-but-tagged files just took are already in history
+    it.track = d.track;
+  } catch { it.track = it.track || 1; }
+  $("#track").value = it.track;
+  checkTrack();
+}
+function checkTrack() {
+  const it = S.current, n = +$("#track").value;
+  const w = $("#trackWarn");
+  const taken = it._used && it._used.includes(n);
+  w.hidden = !taken;
+  w.textContent = taken ? `Disc ${it.disc} already has a track ${n}.` : "";
+}
+$("#track").addEventListener("input", () => { S.current.trackEdited = true; checkTrack(); });
+$("#disc").addEventListener("change", async () => { S.current.disc = +$("#disc").value; renderSlots(); S.current.trackEdited = false; await refreshTrack(); });
+
+$("#trackerSel").addEventListener("change", () => {
+  const it = S.current; it.tracker = $("#trackerSel").value; it.era = ""; it.match = null; it.autoMatched = false;
+  loadForTracker(it);
+});
+$("#reloadTracker").onclick = async () => { const it = S.current; if (!it?.tracker) return; await songsFor(it.tracker, true); await coverInfo(it.tracker, true); sheetInfo(it.tracker, true); loadForTracker(it); };
+
+async function loadForTracker(it) {
+  $("#matches").innerHTML = it.tracker ? '<div class="muted" style="padding:8px"><span class="spin"></span> Loading tracker…</div>' : '<div class="muted" style="padding:8px">No tracker picked for this artist. Pick one above, or just set the era by hand.</div>';
+  const key = it.tracker || slotKey(it);
+  await coverInfo(key);
+  if (it.tracker) await songsFor(it.tracker);
+  if (S.current !== it) return;
+  if (it.tracker && !it.autoMatched && !it.era) {
+    it.autoMatched = true;
+    const best = findMatches(it.title, S.songs[it.tracker] || [], 1)[0];
+    if (best && best.score >= .85) applyMatch(best.s, false);
+  }
+  renderEras();
+  renderMatches();
+  renderCover();
+}
+
+function slotKey(it) { return "slot-" + it.disc; }
+function coverKeyOf(it) { return it.tracker || slotKey(it); }
+
+function renderMatches() {
+  const it = S.current;
+  if (!it.tracker) return;
+  const songs = S.songs[it.tracker] || [];
+  if (!songs.length) { $("#matches").innerHTML = '<div class="muted" style="padding:8px">Nothing loaded from this tracker.</div>'; return; }
+  const q = $("#search").value.trim() || it.title;
+  const list = findMatches(q, songs);
+  $("#matches").innerHTML = list.length ? list.map((x, i) => `
+    <div class="m ${it.match && it.match.name === x.s.name && it.match.era === x.s.era ? "on" : ""}" data-i="${i}">
+      <span class="n">${esc(x.s.name)}</span>
+      <span class="e">${esc(x.s.era || "No era")}${x.s.dateYear || x.s.eraYear ? " · " + (x.s.dateYear || x.s.eraYear) : ""}${x.s.section ? " · " + esc(x.s.section) : ""}</span>
+      <span class="s">${Math.round(x.score * 100)}%</span>
+    </div>`).join("") : `<div class="muted" style="padding:8px">No match for "${esc(q)}". Try the search box, or pick the era yourself.</div>`;
+  $("#matches").onclick = e => { const m = e.target.closest(".m"); if (m) { applyMatch(list[+m.dataset.i].s, true); renderMatches(); } };
+}
+let searchTimer;
+$("#search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderMatches, 120); });
+
+function applyMatch(song, fromClick) {
+  const it = S.current;
+  it.match = song;
+  it.era = song.era || "";
+  const y = song.dateYear || song.eraYear;
+  if (y && (fromClick || !$("#year").value)) { it.year = String(y); $("#year").value = it.year; }
+  if (disco()) {
+    // name, version, features and producers the way the tracker writes them
+    const p = parseTrackerName(song.name);
+    stash();
+    it.title = p.title || it.title; it.ver = p.ver; it.featType = p.featType; it.feat = p.feat; it.prod = p.prod;
+    it.aka = p.aka.join(", ");
+    it.mainArtist = p.mainArtist && !same(p.mainArtist, slotArtist(it)) ? p.mainArtist : "";
+    it.release = /released/i.test(song.section || "") && !/unreleased/i.test(song.section || "") ? "Hosted" : "Unreleased";
+    ["title", "ver", "aka", "featType", "feat", "prod", "mainArtist", "release"].forEach(k => $("#" + k).value = it[k]);
+    it.artistEdited = false; it.albumEdited = false;
+    if (!it.folderPicked || fromClick) { it.folderPicked = false; chooseFolder(it); renderFolders(); $("#dtrack").value = it.dtrack || ""; }
+    updatePreview();
+    renderQueue();
+  }
+  renderEras();
+  renderCover();
+}
+
+$("#useTrackerName").onclick = () => {
+  const it = S.current;
+  if (!it.match) return toast("Pick a tracker match first");
+  $("#title").value = it.match.name; it.title = it.match.name; renderQueue();
+};
+$("#title").addEventListener("input", () => { S.current.title = $("#title").value; renderQueue(); });
+
+function renderEras() {
+  const it = S.current;
+  const key = coverKeyOf(it);
+  const eras = erasOf(key);
+  const files = S.covers[key]?.files || {};
+  $("#era").innerHTML = `<option value="">(no era)</option>` + eras.map(e =>
+    `<option value="${esc(e.name)}" ${e.name === it.era ? "selected" : ""}>${esc(e.name)}${e.year ? " (" + e.year + ")" : ""}</option>`).join("");
+  if (it.era && !eras.some(e => e.name === it.era)) $("#era").insertAdjacentHTML("beforeend", `<option selected>${esc(it.era)}</option>`);
+  $("#era").value = it.era || "";
+}
+$("#era").addEventListener("change", () => {
+  const it = S.current; it.era = $("#era").value; renderCover();
+  if (disco()) { it.folderPicked = false; it.albumEdited = false; chooseFolder(it); renderFolders(); $("#dtrack").value = it.dtrack || ""; updatePreview(); }
+});
+
+async function renderCover() {
+  const it = S.current;
+  const art = $("#art"), cap = $("#artCap");
+  $("#clearOneOff").hidden = !it.oneOff;
+  if (it.oneOff) {
+    art.style.backgroundImage = `url("${it.oneOff}")`; art.textContent = "";
+    cap.textContent = "Custom image for this song only"; return;
+  }
+  const c = await effectiveCover(coverKeyOf(it), it.era);
+  if (S.current !== it) return;
+  if (c) {
+    art.style.backgroundImage = `url("${c.url}")`; art.textContent = "";
+    cap.textContent = c.from === "era" ? `Cover for ${it.era}`
+      : c.from === "sheet" ? `No cover of yours for ${it.era} yet, using the tracker's cover`
+      : (it.era ? `No cover for ${it.era} here or on the tracker, using the artist default` : "Artist default cover");
+  } else {
+    art.style.backgroundImage = ""; art.textContent = it.era ? `No cover set for "${it.era}" yet` : "No cover";
+    cap.textContent = "No cover set, so any art already in the file is kept.";
+  }
+}
+
+let imgTarget = null;
+$("#setEraCover").onclick = () => { imgTarget = "era"; $("#imgInput").click(); };
+$("#oneOff").onclick = () => { imgTarget = "oneoff"; $("#imgInput").click(); };
+$("#clearOneOff").onclick = () => { S.current.oneOff = null; renderCover(); };
+$("#imgInput").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  await useImage(f, imgTarget);
+};
+async function useImage(file, target) {
+  const it = S.current, url = await readImage(file);
+  if (target === "oneoff") { it.oneOff = url; return renderCover(); }
+  const era = it.era || "_default";
+  await setCover(coverKeyOf(it), era, url);
+  toast(era === "_default" ? "Default cover saved" : `Cover saved for ${era}`);
+  renderCover();
+}
+// drop an image straight on the cover square
+$("#art").addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); });
+$("#art").addEventListener("drop", e => {
+  e.preventDefault(); e.stopPropagation();
+  const f = [...e.dataTransfer.files].find(f => f.type.startsWith("image/"));
+  if (f) useImage(f, "era");
+});
+
+async function save() {
+  const it = S.current;
+  if (!it || it.status === "busy") return;
+  stash();
+  if (!it.title.trim()) return toast("Title is empty", true);
+  if (!it.artist.trim()) return toast("Artist is empty", true);
+  if (!disco() && !it.track) return toast("Track number is empty", true);
+  let payload;
+  if (disco()) {
+    updatePreview();
+    const f = currentFolder(it);
+    if (!f) return toast("Pick a folder for this song", true);
+    const n = computeNames(it);
+    payload = {
+      path: it.path, title: n.titleTag, artist: it.artist, disc: it.disc, track: it.dtrack || 0,
+      year: it.year, genre: it.genre, album: it.album, albumArtist: it.albumArtist,
+      era: it.era, coverKey: coverKeyOf(it), coverOverride: it.oneOff, folder: f.rel, fileName: n.file,
+    };
+  } else {
+    payload = {
+      path: it.path, title: it.title, artist: it.artist, disc: it.disc, track: it.track,
+      year: it.year, genre: it.genre, album: it.album, albumArtist: it.albumArtist,
+      era: it.era, coverKey: coverKeyOf(it), coverOverride: it.oneOff,
+    };
+  }
+  it.status = "busy"; $("#saveBtn").disabled = true; $("#saveBtn").innerHTML = '<span class="spin"></span> Tagging…';
+  try {
+    const r = await api("/api/save", payload);
+    it.status = "done"; it.path = r.path; it.name = r.path.split(/[\\/]/).pop();
+    S.settings.lastSlot = it.disc;
+    if (disco()) {
+      it.filedIn = payload.folder;
+      const key = coverKeyOf(it);
+      if (it.era && !(it.mainArtist || "").trim()) { S.settings.eraFolders = S.settings.eraFolders || {}; (S.settings.eraFolders[key] = S.settings.eraFolders[key] || {})[it.era] = payload.folder; }
+      delete S.folders[it.disc];
+      S.queue.forEach(q => { if (+q.disc === +it.disc) q._scan = null; });
+      toast(`Filed "${it.name}" in ${payload.folder}${r.converted ? " (converted)" : ""}${r.hasCover ? "" : " - no cover"}`);
+    } else
+    toast(`Tagged ${it.disc}-${it.track} ${it.title}${r.converted ? " (converted)" : ""}${r.hasCover ? "" : " - no cover"}`);
+    // later songs on the same disc move up a number
+    S.queue.forEach(q => { if (q !== it && q.status !== "done" && +q.disc === +it.disc && !q.trackEdited) q.track = null; });
+    const next = S.queue.find(q => q.status !== "done" && q.status !== "busy");
+    renderQueue();
+    if (next) select(next.id); else select(it.id);
+  } catch (e) {
+    it.status = "err"; toast("Couldn't tag: " + e.message, true); renderQueue();
+  } finally {
+    $("#saveBtn").disabled = false; $("#saveBtn").innerHTML = '<span class="am">Tag file</span><span class="dm">Tag &amp; file it</span>';
+  }
+}
+$("#saveBtn").onclick = save;
+$("#skipBtn").onclick = () => {
+  const i = S.queue.indexOf(S.current);
+  const next = S.queue.slice(i + 1).concat(S.queue.slice(0, i)).find(q => q.status !== "done");
+  if (next) select(next.id);
+};
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); if ($("#tagPage").classList.contains("on")) save(); }
+});
+
+/* ------------------------------------------------------------ adding files */
+$("#drop").onclick = async () => {
+  try {
+    const infos = await api("/api/browse", {});
+    addInfos(infos);
+  } catch (e) {
+    // no native dialog: fall back to the browser picker (tags a copy)
+    $("#fileInput").click();
+  }
+};
+$("#fileInput").onchange = async e => { await uploadFiles([...e.target.files]); e.target.value = ""; };
+
+async function uploadFiles(files) {
+  const infos = [];
+  for (const f of files) {
+    setStatus(`<span class="spin"></span> Copying ${esc(f.name)}…`);
+    const r = await fetch("/api/upload", { method: "POST", headers: { "X-Filename": encodeURIComponent(f.name) }, body: f });
+    infos.push(await r.json());
+  }
+  setStatus("");
+  if (files.length) toast(`Browser mode: tagging copies saved in the app's data${SEP}incoming folder`);
+  addInfos(infos);
+}
+
+["dragenter", "dragover"].forEach(ev => document.addEventListener(ev, e => {
+  e.preventDefault();
+  if ($("#tagPage").classList.contains("on")) $("#drop").classList.add("over");
+}));
+["dragleave", "drop"].forEach(ev => document.addEventListener(ev, e => {
+  if (ev === "dragleave" && e.relatedTarget) return;
+  $("#drop").classList.remove("over");
+}));
+document.addEventListener("drop", e => {
+  e.preventDefault();
+  if (!$("#tagPage").classList.contains("on")) return;
+  // in the app window, Python receives the real file paths and calls app.addPaths
+  if (window.__nativeDrop) return;
+  const files = [...e.dataTransfer.files].filter(f => !f.type.startsWith("image/"));
+  if (files.length) uploadFiles(files);
+});
+
+/* ------------------------------------------------------------ covers page */
+function fillTrackerSelects() {
+  const opts = `<option value="">(none)</option>` + S.trackers.map(t => `<option value="${esc(t.key)}">${esc(t.name)}</option>`).join("");
+  $("#trackerSel").innerHTML = opts;
+  const cv = $("#cvArtist");
+  const extra = S.settings.slots.filter(s => !s.tracker).map(s => `<option value="slot-${s.disc}">${esc(s.name)} (disc ${s.disc}, no tracker)</option>`).join("");
+  // artists from your slots first, then every other tracker
+  const mine = S.settings.slots.filter(s => s.tracker).map(s => s.tracker);
+  const ordered = [...mine.map(k => S.trackers.find(t => t.key === k) || { key: k, name: k }), ...S.trackers.filter(t => !mine.includes(t.key))];
+  cv.innerHTML = ordered.map(t => `<option value="${esc(t.key)}">${esc(t.name)}</option>`).join("") + extra;
+  if (S.current) $("#trackerSel").value = S.current.tracker || "";
+  renderSlotRows();
+}
+
+async function renderCoverGrid() {
+  const key = $("#cvArtist").value;
+  const grid = $("#coverGrid");
+  if (!key) { grid.innerHTML = ""; return; }
+  grid.innerHTML = '<div class="muted"><span class="spin"></span> Loading eras…</div>';
+  await coverInfo(key, true);
+  if (!key.startsWith("slot-")) await songsFor(key);
+  if ($("#cvArtist").value !== key) return;
+  const eras = [{ name: "_default", label: "Default", sub: "used when an era has no cover here or on the tracker" }, ...erasOf(key).map(e => ({ name: e.name, label: e.name, sub: [e.year, e.count ? e.count + (e.count === 1 ? " song" : " songs") : (e.custom ? "added by you" : "")].filter(Boolean).join(" · "), custom: e.custom }))];
+  const tiles = await Promise.all(eras.map(async e => ({ ...e, url: await coverUrl(key, e.name) })));
+  grid.innerHTML = tiles.map((e, i) => `
+    <div class="tile ${e.url ? "has" : ""}" data-i="${i}">
+      <div class="art" style="${e.url ? `background-image:url('${e.url}')` : ""}">${e.url ? "" : "+ Add cover"}</div>
+      <span class="badge">From tracker</span>
+      <button class="rm" title="Remove cover">×</button>
+      <div class="nm">${esc(e.label)}</div><div class="sub">${esc(e.sub || "")}${e.custom ? ` · <a href="#" data-del="${i}" style="color:var(--muted)">remove era</a>` : ""}</div>
+    </div>`).join("");
+  // fill in the tracker's covers for eras you haven't done yet, once they arrive
+  sheetInfo(key).then(async () => {
+    if ($("#cvArtist").value !== key) return;
+    for (const [i, e] of tiles.entries()) {
+      if (e.url) continue;
+      const url = await sheetCoverUrl(key, e.name);
+      const tile = grid.querySelector(`.tile[data-i="${i}"]`);
+      if (!url || !tile) continue;
+      const art = tile.querySelector(".art");
+      art.style.backgroundImage = `url('${url}')`;
+      art.textContent = "";
+      art.title = "The tracker's cover - click or drop an image to use your own";
+      tile.classList.add("sheet");
+    }
+  });
+  grid.onclick = async ev => {
+    const tile = ev.target.closest(".tile"); if (!tile) return;
+    const e = tiles[+tile.dataset.i];
+    if (ev.target.dataset.del !== undefined) {
+      ev.preventDefault();
+      const list = (S.covers[key].custom || []).filter(n => n !== e.name);
+      await api("/api/custom-eras", { key, eras: list }); S.covers[key].custom = list; return renderCoverGrid();
+    }
+    if (ev.target.classList.contains("rm")) { await api("/api/cover", { key, era: e.name, remove: true }); return renderCoverGrid(); }
+    coverPick = { key, era: e.name }; $("#coverImgInput").click();
+  };
+  grid.querySelectorAll(".tile").forEach(tile => {
+    tile.addEventListener("dragover", ev => { ev.preventDefault(); ev.stopPropagation(); tile.classList.add("over"); });
+    tile.addEventListener("dragleave", () => tile.classList.remove("over"));
+    tile.addEventListener("drop", async ev => {
+      ev.preventDefault(); ev.stopPropagation(); tile.classList.remove("over");
+      const f = [...ev.dataTransfer.files].find(f => f.type.startsWith("image/")); if (!f) return;
+      await setCover(key, tiles[+tile.dataset.i].name, await readImage(f)); renderCoverGrid();
+    });
+  });
+}
+let coverPick = null;
+$("#coverImgInput").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f || !coverPick) return;
+  await setCover(coverPick.key, coverPick.era, await readImage(f));
+  renderCoverGrid();
+};
+$("#cvArtist").onchange = renderCoverGrid;
+$("#cvAddEra").onclick = async () => {
+  const key = $("#cvArtist").value, name = $("#cvNewEra").value.trim(); if (!key || !name) return;
+  const info = await coverInfo(key);
+  const list = [...new Set([...(info.custom || []), name])];
+  await api("/api/custom-eras", { key, eras: list }); info.custom = list; $("#cvNewEra").value = "";
+  renderCoverGrid();
+};
+
+/* ------------------------------------------------------------ settings page */
+function renderSlotRows() {
+  const topts = k => `<option value="">(none)</option>` + S.trackers.map(t => `<option value="${esc(t.key)}" ${t.key === k ? "selected" : ""}>${esc(t.name)}</option>`).join("") +
+    (k && !S.trackers.some(t => t.key === k) ? `<option selected value="${esc(k)}">${esc(k)}</option>` : "");
+  $("#slotRows").innerHTML = S.settings.slots.map((s, i) => `
+    <tr data-i="${i}">
+      <td class="am"><input type="number" min="1" data-k="disc" value="${s.disc}"></td>
+      <td><input data-k="name" value="${esc(s.name)}"></td>
+      <td><input data-k="artist" value="${esc(s.artist)}"></td>
+      <td><select data-k="tracker">${topts(s.tracker)}</select></td>
+      <td class="dm"><input data-k="folder" value="${esc(s.folder || "")}" placeholder="(main folder)"></td>
+      <td><button class="btn small ghost" data-del="${i}">×</button></td>
+    </tr>`).join("");
+}
+$("#sFormat").addEventListener("change", () => { document.body.classList.toggle("mode-disco", $("#sFormat").value === "discography"); document.body.classList.toggle("mode-album", $("#sFormat").value !== "discography"); });
+$$("[data-browse]").forEach(b => b.onclick = async () => {
+  try { const r = await api("/api/pick-folder", {}); if (r.path) $("#" + b.dataset.browse).value = r.path; } catch (e) { toast(e.message, true); }
+});
+$("#slotRows").addEventListener("click", e => { const d = e.target.dataset.del; if (d !== undefined) { collectSlots(); S.settings.slots.splice(+d, 1); renderSlotRows(); } });
+$("#addSlot").onclick = () => { collectSlots(); const max = Math.max(0, ...S.settings.slots.map(s => +s.disc)); S.settings.slots.push({ disc: max + 1, name: "", artist: "", tracker: "" }); renderSlotRows(); };
+function collectSlots() {
+  S.settings.slots = $$("#slotRows tr").map(tr => {
+    const o = {}; tr.querySelectorAll("[data-k]").forEach(el => o[el.dataset.k] = el.dataset.k === "disc" ? +el.value : el.value.trim()); return o;
+  }).filter(s => s.disc && s.name);
+  // keep disc numbers unique even though they're hidden in discography mode
+  S.settings.slots.forEach((s, i, arr) => { if (arr.findIndex(x => +x.disc === +s.disc) !== i) s.disc = Math.max(...arr.map(x => +x.disc)) + 1; });
+}
+function fillSettings() {
+  const s = S.settings;
+  $("#sFormat").value = s.format || "discography"; $("#sAfter").value = s.afterTag || "move";
+  $("#sComment").value = $("#sComment2").value = s.comment || ""; $("#sAlbumFolder").value = s.albumFolder || "";
+  $("#sLibrary").value = s.libraryFolder; $("#sAlbum").value = s.album; $("#sAlbumArtist").value = s.albumArtist;
+  $("#sGenre").value = s.genre; $("#sDiscTotal").value = s.discTotal; $("#sTracker").value = s.trackerUrl; $("#sConvert").value = s.convertTo;
+  applyMode();
+  renderSlotRows();
+  $("#artistList").innerHTML = [...new Set(s.slots.map(x => x.artist).filter(Boolean))].map(a => `<option value="${esc(a)}">`).join("");
+}
+$("#saveSettings").onclick = async () => {
+  collectSlots();
+  const trackerChanged = $("#sTracker").value.trim() !== S.settings.trackerUrl;
+  const fmt = $("#sFormat").value;
+  S.settings = await api("/api/settings", {
+    format: fmt, afterTag: $("#sAfter").value, comment: (fmt === "album" ? $("#sComment2") : $("#sComment")).value.trim(),
+    libraryFolder: $("#sLibrary").value.trim(), albumFolder: $("#sAlbumFolder").value.trim(),
+    album: $("#sAlbum").value, albumArtist: $("#sAlbumArtist").value,
+    genre: $("#sGenre").value, discTotal: +$("#sDiscTotal").value || 100, trackerUrl: $("#sTracker").value.trim(),
+    convertTo: $("#sConvert").value, slots: S.settings.slots,
+  });
+  S.folders = {}; S.queue.forEach(q => { q._scan = null; q.folderPicked = false; });
+  fillSettings(); fillTrackerSelects();
+  if (S.current) renderSlots();
+  toast("Settings saved");
+  if (trackerChanged) { S.songs = {}; loadTrackers(); }
+};
+
+/* ------------------------------------------------------------ nav + boot */
+$$("nav button").forEach(b => b.onclick = () => {
+  stash();
+  $$("nav button").forEach(x => x.classList.toggle("on", x === b));
+  $$(".page").forEach(p => p.classList.toggle("on", p.id === b.dataset.page));
+  if (b.dataset.page === "coversPage") {
+    if (S.current && !$("#cvArtist").dataset.touched) $("#cvArtist").value = coverKeyOf(S.current);
+    renderCoverGrid();
+  }
+  if (b.dataset.page === "tagPage" && S.current) { S.covers = {}; select(S.current.id); }
+});
+$("#cvArtist").addEventListener("change", () => $("#cvArtist").dataset.touched = "1");
+
+(async function boot() {
+  const st = await api("/api/state");
+  S.settings = st.settings;
+  fillSettings();
+  showForm(false);
+  await loadTrackers();
+})();
+</script>
+</body>
+</html>
