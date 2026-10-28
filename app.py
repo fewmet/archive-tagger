@@ -312,17 +312,28 @@ def sheet_covers(key, refresh=False):
             return {"covers": {}, "pending": False, "error": str(e)}
 
 
+SHEET_RECHECKED = {}  # tracker key -> when we last re-asked the site for an era the cache didn't have
+
+
 def sheet_cover_url(key, era):
     if not era:
         return None
-    covers = sheet_covers(key)["covers"]
-    if covers.get(era):
-        return covers[era]
     want = loose_era(era)
-    for name, url in covers.items():
-        if want and loose_era(name) == want:
-            return url
-    return None
+
+    def find(covers):
+        if covers.get(era):
+            return covers[era]
+        for name, url in covers.items():
+            if want and loose_era(name) == want:
+                return url
+        return None
+
+    url = find(sheet_covers(key)["covers"])
+    # the cached list may be older than this era on the sheet - ask again, but not too often
+    if not url and time.time() - SHEET_RECHECKED.get(key, 0) > 300:
+        SHEET_RECHECKED[key] = time.time()
+        url = find(sheet_covers(key, refresh=True)["covers"])
+    return url
 
 
 def sheet_cover_file(key, era):

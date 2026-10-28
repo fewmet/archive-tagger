@@ -415,6 +415,7 @@ const S = {
   current: null,
   covers: {},             // coverKey -> {files, custom}
   sheet: {},              // tracker key -> promise of {eras, pending}: eras with a cover in the tracker sheet
+  sheetRechecked: {},     // tracker key -> true once we've re-asked the tracker for a missing era this session
   folders: {},            // disc -> promise of the artist folder scan (discography mode)
 };
 const disco = () => (S.settings.format || "discography") === "discography";
@@ -714,7 +715,7 @@ async function coverUrl(key, era) {
   if (!key) return null;
   const info = await coverInfo(key);
   const file = era === "_default" ? "_default.jpg" : (era ? (await sha14(era)) + ".jpg" : null);
-  if (file && info.files[file]) return `/cover?key=${encodeURIComponent(key)}&era=${encodeURIComponent(era)}&v=${info.files[file]}`;
+  if (file && info.files[file]) return `/cover?key=${encUrl(key)}&era=${encUrl(era)}&v=${info.files[file]}`;
   return null;
 }
 // the tracker's own era covers (read off the sheet by tracker-player)
@@ -727,12 +728,20 @@ function sheetInfo(key, refresh) {
   return S.sheet[key];
 }
 const looseEra = e => String(e || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+// encodeURIComponent leaves ' ( ) alone, which breaks url('...') in CSS for eras like "I'm So Me"
+const encUrl = v => encodeURIComponent(v).replace(/['()]/g, c => "%" + c.charCodeAt(0).toString(16).toUpperCase());
 async function sheetCoverUrl(key, era) {
   if (!era || era === "_default") return null;
-  const info = await sheetInfo(key);
   const want = looseEra(era);
-  if (!(info.eras || []).some(e => e === era || (want && looseEra(e) === want))) return null;
-  return `/sheet-cover?key=${encodeURIComponent(key)}&era=${encodeURIComponent(era)}`;
+  const has = info => (info.eras || []).some(e => e === era || (want && looseEra(e) === want));
+  let info = await sheetInfo(key);
+  // the cached list may be older than this era on the sheet - re-ask the tracker once per session
+  if (!has(info) && !S.sheetRechecked[key]) {
+    S.sheetRechecked[key] = true;
+    info = await sheetInfo(key, true);
+  }
+  if (!has(info)) return null;
+  return `/sheet-cover?key=${encUrl(key)}&era=${encUrl(era)}`;
 }
 // yours for the era, else the tracker's, else your artist default
 async function effectiveCover(key, era) {
