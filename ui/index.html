@@ -367,6 +367,9 @@
         <label class="f"><span>Explicit: new songs start as</span>
           <select id="sExplicit"><option value="">Not marked</option><option value="explicit">Explicit (E)</option><option value="clean">Clean</option></select>
         </label>
+        <label class="f"><span>Turn MP3s into M4A (so Apple Music shows the E; small quality loss)</span>
+          <select id="sMp3"><option value="never">Never, keep MP3s as MP3</option><option value="explicit">Only songs marked Explicit</option><option value="always">Always</option></select>
+        </label>
         <label class="f"><span>WAV / FLAC / other files get converted to</span>
           <select id="sConvert"><option value="mp3">MP3, 320 kbps</option><option value="aac">M4A, AAC 256 kbps</option><option value="alac">M4A, Apple Lossless (bigger files)</option></select>
         </label>
@@ -600,7 +603,7 @@ function updatePreview() {
   if (!it.artistEdited) { it.artist = n.artistTag; $("#artist").value = it.artist; }
   if (!it.albumEdited) { it.album = n.album; it.albumArtist = n.albumArtist; $("#album").value = it.album; $("#albumArtist").value = it.albumArtist; }
   const scan = it._scan, f = currentFolder(it);
-  const ext = it.needsConvert ? ((S.settings.convertTo || "mp3") === "mp3" ? ".mp3" : ".m4a") : it.ext;
+  const ext = outExtOf(it);
   $("#pvFile").textContent = (n.file || "(no name yet)") + ext;
   $("#pvTitle").textContent = n.titleTag;
   $("#pvAlbum").textContent = it.album;
@@ -855,15 +858,9 @@ async function select(id) {
   showForm(true);
   $("#fName").textContent = item.name;
   $("#fMeta").textContent = [item.ext.slice(1).toUpperCase(), item.duration ? `${Math.floor(item.duration / 60)}:${String(item.duration % 60).padStart(2, "0")}` : "", item.status === "done" ? "already tagged" : ""].filter(Boolean).join(" · ");
-  const note = $("#fNote");
-  note.hidden = !item.needsConvert;
-  const outExt = (S.settings.convertTo || "mp3") === "mp3" ? ".mp3" : ".m4a";
-  note.textContent = !item.needsConvert ? "" : disco()
-    ? `${item.ext} files can't hold these tags, so a tagged ${outExt} is made in the folder. The original stays where it is.`
-    : `Apple Music can't read tags in ${item.ext} files, so a tagged ${outExt} copy will be made next to it. The original stays untouched.`;
   renderSlots();
   ["title", "artist", "disc", "year", "genre", "album", "albumArtist", "ver", "aka", "note", "featType", "feat", "prod", "mainArtist", "release", "dtrack", "explicit"].forEach(k => $("#" + k).value = item[k] ?? "");
-  explicitHint(item);
+  explicitHint(item); convertNote(item);
   if (disco()) { renderFolders(); loadFolders(item); }
   $("#search").value = "";
   if (disco()) { /* no disc/track numbers in this mode */ }
@@ -873,15 +870,38 @@ async function select(id) {
   await loadForTracker(item);
 }
 
+// is this MP3 turned into an M4A? (Settings > "Turn MP3s into M4A")
+function mp3BecomesM4a(it) {
+  const when = S.settings.mp3ToM4a || "never";
+  return it.ext === ".mp3" && (when === "always" || (when === "explicit" && it.explicit === "explicit"));
+}
+// the file type the song ends up as
+function outExtOf(it) {
+  if (mp3BecomesM4a(it)) return ".m4a";
+  return it.needsConvert ? ((S.settings.convertTo || "mp3") === "mp3" ? ".mp3" : ".m4a") : it.ext;
+}
+function convertNote(it) {
+  const note = $("#fNote");
+  const conv = it.needsConvert || mp3BecomesM4a(it);
+  note.hidden = !conv;
+  const outExt = outExtOf(it);
+  note.textContent = !conv ? ""
+    : mp3BecomesM4a(it) ? `This MP3 becomes a tagged .m4a${disco() ? " in the folder" : " next to it"} (Settings > Turn MP3s into M4A). The original MP3 stays where it is.`
+    : disco() ? `${it.ext} files can't hold these tags, so a tagged ${outExt} is made in the folder. The original stays where it is.`
+    : `Apple Music can't read tags in ${it.ext} files, so a tagged ${outExt} copy will be made next to it. The original stays untouched.`;
+}
 // Apple Music only shows the E on .m4a files; Spotify never shows it on local files
 function explicitHint(it) {
   if (!it) return;
-  const out = it.needsConvert ? ((S.settings.convertTo || "mp3") === "mp3" ? ".mp3" : ".m4a") : it.ext;
   $("#explicitHint").textContent = !it.explicit ? ""
-    : out === ".m4a" ? "Apple Music will show the E on this song."
-    : "Saved in the file, but Apple Music only shows the E on .m4a files, so it won't show for this .mp3.";
+    : outExtOf(it) === ".m4a" ? "Apple Music will show the E on this song."
+    : "Saved in the file, but Apple Music only shows the E on .m4a files, so it won't show for this .mp3. Settings > Turn MP3s into M4A can change that.";
 }
-$("#explicit").addEventListener("change", () => { if (!S.current) return; S.current.explicit = $("#explicit").value; explicitHint(S.current); });
+$("#explicit").addEventListener("change", () => {
+  if (!S.current) return;
+  S.current.explicit = $("#explicit").value;
+  explicitHint(S.current); convertNote(S.current); if (disco()) updatePreview();
+});
 
 function stash() {
   const it = S.current;
@@ -1302,7 +1322,7 @@ function fillSettings() {
   $("#sFormat").value = s.format || "discography"; $("#sAfter").value = s.afterTag || "move";
   $("#sComment").value = $("#sComment2").value = s.comment || ""; $("#sAlbumFolder").value = s.albumFolder || "";
   $("#sLibrary").value = s.libraryFolder; $("#sAlbum").value = s.album; $("#sAlbumArtist").value = s.albumArtist;
-  $("#sGenre").value = s.genre; $("#sDiscTotal").value = s.discTotal; $("#sTracker").value = s.trackerUrl; $("#sConvert").value = s.convertTo; $("#sExplicit").value = s.explicitDefault || "";
+  $("#sGenre").value = s.genre; $("#sDiscTotal").value = s.discTotal; $("#sTracker").value = s.trackerUrl; $("#sConvert").value = s.convertTo; $("#sExplicit").value = s.explicitDefault || ""; $("#sMp3").value = s.mp3ToM4a || "never";
   applyMode();
   renderSlotRows();
   $("#artistList").innerHTML = [...new Set(s.slots.map(x => x.artist).filter(Boolean))].map(a => `<option value="${esc(a)}">`).join("");
@@ -1316,7 +1336,7 @@ $("#saveSettings").onclick = async () => {
     libraryFolder: $("#sLibrary").value.trim(), albumFolder: $("#sAlbumFolder").value.trim(),
     album: $("#sAlbum").value, albumArtist: $("#sAlbumArtist").value,
     genre: $("#sGenre").value, discTotal: +$("#sDiscTotal").value || 100, trackerUrl: $("#sTracker").value.trim(),
-    convertTo: $("#sConvert").value, explicitDefault: $("#sExplicit").value, slots: S.settings.slots,
+    convertTo: $("#sConvert").value, explicitDefault: $("#sExplicit").value, mp3ToM4a: $("#sMp3").value, slots: S.settings.slots,
   });
   S.folders = {}; S.queue.forEach(q => { q._scan = null; q.folderPicked = false; });
   fillSettings(); fillTrackerSelects();

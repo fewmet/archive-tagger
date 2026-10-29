@@ -67,6 +67,7 @@ DEFAULT_SETTINGS = {
     "trackerUrl": "https://tracker-player.onrender.com",
     "convertTo": "mp3",          # mp3 (320k), aac (256k) or alac (lossless)
     "explicitDefault": "",       # what new songs start as: "" (not marked), "explicit" or "clean"
+    "mp3ToM4a": "never",         # turn MP3s into M4A (AAC): "never", "explicit" (only songs marked explicit) or "always"
     "lastSlot": 1,
     "eraFolders": {},            # tracker key -> {era: folder you picked for it}
     # artist slots (disc number is only used in album mode)
@@ -419,6 +420,26 @@ def convert_audio(src, mode, dst=None):
     return dst
 
 
+def mp3_to_m4a(src, s, p):
+    """Should this MP3 become an M4A? Only when the setting says so (Apple Music shows the E only on M4A)."""
+    if os.path.splitext(src)[1].lower() != ".mp3":
+        return False
+    when = s.get("mp3ToM4a", "never")
+    return when == "always" or (when == "explicit" and p.get("explicit") == "explicit")
+
+
+def embedded_art(path):
+    """The cover already inside an MP3, so it survives the switch to M4A."""
+    try:
+        from mutagen.id3 import ID3
+        frames = ID3(path).getall("APIC")
+        if frames:
+            return image_to_jpeg(frames[0].data)
+    except Exception:
+        pass
+    return None
+
+
 def clean_title_from_name(path):
     name = os.path.splitext(os.path.basename(path))[0]
     return re.sub(r"^\d+-\d+\s+", "", name).strip()
@@ -691,7 +712,11 @@ def tag_into_folder(p, s, cover):
     os.makedirs(folder, exist_ok=True)
     name = safe_name(p.get("fileName") or p["title"]) or "Untitled"
     converted = False
-    if ext in CONVERTIBLE:
+    if mp3_to_m4a(src, s, p):
+        cover = cover or embedded_art(src)
+        dst = convert_audio(src, "aac", os.path.join(folder, name + ".m4a"))
+        converted = True
+    elif ext in CONVERTIBLE:
         mode = s.get("convertTo", "mp3")
         dst = convert_audio(src, mode, os.path.join(folder, name + converted_ext(mode)))
         converted = True
@@ -746,7 +771,11 @@ def tag_file(p):
     ext = os.path.splitext(src)[1].lower()
     target = src
     converted = False
-    if ext in CONVERTIBLE:
+    if mp3_to_m4a(src, s, p):
+        cover = cover or embedded_art(src)
+        target = convert_audio(src, "aac")
+        converted = True
+    elif ext in CONVERTIBLE:
         mode = s.get("convertTo", "mp3")
         target = convert_audio(src, mode)
         converted = True

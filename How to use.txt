@@ -47,6 +47,8 @@ Tagging
    Folders whose songs are numbered (01., 02., ...) get the next number automatically.
    Explicit: pick "Explicit (E)", "Clean" or "Not marked" for the song. Settings sets what new songs start as.
    Apple Music only shows the E on .m4a files (it ignores it on .mp3), and Spotify doesn't show it on local files.
+   To get the E on MP3s, set Settings > "Turn MP3s into M4A" to "Only songs marked Explicit" or "Always".
+   That makes a tagged .m4a (small quality loss from re-encoding) and leaves the original MP3 where it was.
 4. The box under it shows the exact file name and tags. Press "Tag & file it" (or Ctrl+S, Cmd+S on a Mac).
 
 Covers tab: set your own cover for each era. An era without one uses the tracker's cover.
