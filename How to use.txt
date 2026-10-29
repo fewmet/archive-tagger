@@ -58,4 +58,9 @@ WAV, FLAC and other formats become a 320 kbps MP3 in the folder (change it in Se
 
 Prefer one big Apple Music album with disc number = artist? Settings > "How songs are organized".
 
+Updates
+When a new version is out, a green bar at the top says so. Press "Update now" and the app updates
+itself and reopens. Your settings, covers and songs aren't touched. Settings > Updates can check
+by hand, or install new versions by themselves when the app opens.
+
 If something breaks, data\log.txt has the error.

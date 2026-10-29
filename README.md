@@ -22,4 +22,12 @@ If the Mac says "Permission denied", open Terminal, type `chmod +x ` (with the s
 
 See [How to use.txt](How%20to%20use.txt) for the full walkthrough: picking your music folder, tagging, covers, and file naming.
 
+## Updates
+
+From v1.2.0 on, the app checks for new versions when it opens. A bar at the top shows when one is out, and **Update now** updates it in place and reopens it, keeping your settings, covers and songs. Settings > Updates can check by hand or install updates by themselves. If you have v1.0.0 or v1.1.0, download v1.2.0 once from [Releases](https://github.com/fewmet/archive-tagger/releases/latest), and it updates itself after that.
+
 If something breaks, `data/log.txt` has the error.
+
+## Publishing a new version
+
+Bump `VERSION` at the top of `app.py`, push, then publish a GitHub release whose tag matches (for example `v1.3.0`) with the ZIP attached (`git archive --format=zip --prefix="Local Files Tagger/" -o Local-Files-Tagger-v1.3.0.zip HEAD`). Installed copies pick it up from the latest release.

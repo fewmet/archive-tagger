@@ -31,6 +31,9 @@ import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+VERSION = "1.2.0"                  # bump this before publishing a release with the matching tag (v1.2.0)
+UPDATE_REPO = "fewmet/archive-tagger"  # GitHub repo whose latest release the app updates from
+
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 UI_DIR = os.path.join(APP_DIR, "ui")
 DATA_DIR = os.path.join(APP_DIR, "data")
@@ -67,6 +70,7 @@ DEFAULT_SETTINGS = {
     "trackerUrl": "https://tracker-player.onrender.com",
     "convertTo": "mp3",          # mp3 (320k), aac (256k) or alac (lossless)
     "explicitDefault": "",       # what new songs start as: "" (not marked), "explicit" or "clean"
+    "autoUpdate": False,         # install new releases by itself when the app opens (otherwise it asks)
     "mp3ToM4a": "never",         # turn MP3s into M4A (AAC): "never", "explicit" (only songs marked explicit) or "always"
     "lastSlot": 1,
     "eraFolders": {},            # tracker key -> {era: folder you picked for it}
@@ -875,6 +879,121 @@ def open_in_explorer(path):
         subprocess.Popen(["xdg-open", os.path.dirname(path)])
 
 
+# ------------------------------------------------------------------ updates
+#
+# The app checks the latest GitHub release of UPDATE_REPO. Updating downloads that
+# release's ZIP, copies its files over this folder (never touching data/ or .venv/),
+# installs any new requirements, and restarts the app.
+
+UPDATE_KEEP = {"data", ".venv", ".git", "__pycache__"}
+UPDATE_LOCK = threading.Lock()
+_update_cache = {"at": 0, "info": None}
+
+
+def parse_version(text):
+    nums = [int(n) for n in re.findall(r"\d+", str(text or ""))[:3]]
+    return tuple(nums + [0] * (3 - len(nums)))
+
+
+def github_get(url, accept="application/vnd.github+json"):
+    req = urllib.request.Request(url, headers={"User-Agent": f"LocalFilesTagger/{VERSION}", "Accept": accept})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return r.read()
+
+
+def check_update(force=False):
+    if not force and _update_cache["info"] and time.time() - _update_cache["at"] < 600:
+        return _update_cache["info"]
+    rel = json.loads(github_get(f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest").decode("utf-8"))
+    latest = rel.get("tag_name") or ""
+    zips = [a for a in rel.get("assets") or [] if str(a.get("name", "")).lower().endswith(".zip")]
+    info = {
+        "current": VERSION,
+        "latest": latest.lstrip("vV"),
+        "available": parse_version(latest) > parse_version(VERSION),
+        "notes": rel.get("body") or "",
+        "page": rel.get("html_url") or f"https://github.com/{UPDATE_REPO}/releases/latest",
+        "zip": zips[0]["browser_download_url"] if zips else rel.get("zipball_url"),
+    }
+    _update_cache.update(at=time.time(), info=info)
+    return info
+
+
+def install_update():
+    import tempfile
+    import zipfile
+    if not UPDATE_LOCK.acquire(blocking=False):
+        raise RuntimeError("An update is already being installed.")
+    try:
+        info = check_update(force=True)
+        if not info["available"]:
+            return {"updated": False, "version": VERSION}
+        tmp = tempfile.mkdtemp(prefix="lft-update-")
+        zpath = os.path.join(tmp, "update.zip")
+        with open(zpath, "wb") as f:
+            f.write(github_get(info["zip"], accept="application/octet-stream"))
+        with zipfile.ZipFile(zpath) as z:
+            names = z.namelist()
+            # the folder inside the ZIP that holds app.py (e.g. "Local Files Tagger/")
+            roots = sorted((n[:-len("app.py")] for n in names if n == "app.py" or n.endswith("/app.py")), key=len)
+            if not roots or roots[0] + "ui/index.html" not in names:
+                raise RuntimeError("The update download doesn't look like Local Files Tagger.")
+            root = roots[0]
+            files = []
+            for n in names:
+                if not n.startswith(root) or n.endswith("/"):
+                    continue
+                rel = n[len(root):]
+                parts = rel.split("/")
+                if parts[0] in UPDATE_KEEP or any(x in ("", ".", "..") for x in parts) or ":" in rel:
+                    continue
+                files.append((n, parts))
+            old_req = ""
+            req_path = os.path.join(APP_DIR, "requirements.txt")
+            if os.path.exists(req_path):
+                with open(req_path, encoding="utf-8", errors="replace") as f:
+                    old_req = f.read()
+            for n, parts in files:
+                dst = os.path.join(APP_DIR, *parts)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                with z.open(n) as src, open(dst + ".new", "wb") as out:
+                    shutil.copyfileobj(src, out)
+                os.replace(dst + ".new", dst)
+                if os.name != "nt" and dst.endswith((".command", ".sh")):
+                    os.chmod(dst, 0o755)
+        shutil.rmtree(tmp, ignore_errors=True)
+        with open(req_path, encoding="utf-8", errors="replace") as f:
+            new_req = f.read()
+        if new_req != old_req:
+            flags = 0x08000000 if os.name == "nt" else 0
+            r = subprocess.run([sys.executable, "-m", "pip", "install", "-r", req_path],
+                               capture_output=True, text=True, creationflags=flags)
+            if r.returncode != 0:
+                log("update: pip install failed\n" + (r.stdout or "")[-2000:] + (r.stderr or "")[-2000:])
+        log(f"updated {VERSION} -> {info['latest']}")
+        threading.Timer(1.0, restart_app).start()
+        return {"updated": True, "version": info["latest"]}
+    finally:
+        UPDATE_LOCK.release()
+
+
+def restart_app():
+    """Start the updated app in a new process, then close this one."""
+    env = dict(os.environ, LFT_RESTARTED="1")
+    kw = {"cwd": APP_DIR, "env": env}
+    if os.name == "nt":
+        kw["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    else:
+        kw["start_new_session"] = True
+    subprocess.Popen([sys.executable, os.path.join(APP_DIR, "app.py")] + sys.argv[1:], **kw)
+    try:
+        if WINDOW is not None:
+            WINDOW.destroy()
+    except Exception:
+        pass
+    os._exit(0)
+
+
 # ------------------------------------------------------------------ http
 
 class Handler(BaseHTTPRequestHandler):
@@ -907,7 +1026,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(data)
             elif u.path == "/api/state":
-                self.send_json({"settings": load_settings(), "appMode": WINDOW is not None})
+                self.send_json({"settings": load_settings(), "appMode": WINDOW is not None, "version": VERSION})
+            elif u.path == "/api/update-check":
+                self.send_json(check_update(q.get("force") == "1"))
             elif u.path == "/api/trackers":
                 self.send_json(tracker_artists(q.get("refresh") == "1"))
             elif u.path == "/api/songs":
@@ -996,6 +1117,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True})
             elif u.path == "/api/pick-folder":
                 self.send_json({"path": browse_folder()})
+            elif u.path == "/api/update-install":
+                self.send_json(install_update())
+            elif u.path == "/api/open-url":
+                url = str(p.get("url") or "")
+                if not url.startswith("https://github.com/"):
+                    raise RuntimeError("Only GitHub links open from here.")
+                webbrowser.open(url)
+                self.send_json({"ok": True})
             elif u.path == "/api/reveal":
                 open_in_explorer(p["path"])
                 self.send_json({"ok": True})
@@ -1014,6 +1143,8 @@ def start_server():
 
 def main():
     global WINDOW
+    if os.environ.pop("LFT_RESTARTED", None):
+        time.sleep(1.5)  # let the old copy finish closing after an update
     port = int(os.environ.get("TAGGER_PORT", "0"))
     if port:
         srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)

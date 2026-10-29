@@ -51,6 +51,14 @@
   nav button { background: none; border: 0; padding: 6px 14px; border-radius: 8px; cursor: pointer; color: var(--muted); }
   nav button.on { background: var(--green); color: var(--ink); font-weight: 600; }
   #trackerStatus { margin-left: auto; font-size: 12px; color: var(--muted); }
+  #version { font-size: 11px; color: var(--muted); margin-left: -10px; }
+  #updateBar { display: flex; align-items: center; gap: 10px; padding: 8px 20px; font-size: 13px;
+    background: rgba(60, 220, 110, .12); border-bottom: 1px solid var(--line); }
+  #updateBar[hidden] { display: none; }
+  #updateBar .grow { flex: 1; }
+  #updateCover { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 10px; background: rgba(0,0,0,.82); font-size: 15px; text-align: center; padding: 20px; }
+  #updateCover[hidden] { display: none; }
 
   main { flex: 1; min-height: 0; }
   .page { display: none; height: 100%; }
@@ -195,6 +203,7 @@
 <body>
 <header>
   <h1><b>Local Files</b> Tagger</h1>
+  <span id="version"></span>
   <nav>
     <button data-page="tagPage" class="on">Tag</button>
     <button data-page="coversPage">Covers</button>
@@ -202,6 +211,13 @@
   </nav>
   <div id="trackerStatus"></div>
 </header>
+<div id="updateBar" hidden>
+  <span class="grow" id="updateText"></span>
+  <button class="btn small ghost" id="updateNotes">What's new</button>
+  <button class="btn small primary" id="updateNow">Update now</button>
+  <button class="btn small ghost" id="updateLater">Later</button>
+</div>
+<div id="updateCover" hidden><div id="updateCoverText"></div></div>
 
 <main>
   <!-- TAG -->
@@ -380,6 +396,15 @@
         <tbody id="slotRows"></tbody>
       </table>
       <div><button class="btn small" id="addSlot">Add artist</button></div>
+      <div class="section-label">Updates</div>
+      <div class="grid2">
+        <label class="f"><span>When there's a new version</span>
+          <select id="sAutoUpdate"><option value="ask">Tell me, I'll press Update</option><option value="auto">Install it by itself when the app opens</option></select>
+        </label>
+        <div class="f"><span id="updateStatus" class="muted" style="font-size:12px">&nbsp;</span>
+          <div><button class="btn" id="checkUpdates">Check for updates</button></div>
+        </div>
+      </div>
       <div class="savebar"><button class="btn primary" id="saveSettings">Save settings</button></div>
     </div>
   </section>
@@ -1322,7 +1347,7 @@ function fillSettings() {
   $("#sFormat").value = s.format || "discography"; $("#sAfter").value = s.afterTag || "move";
   $("#sComment").value = $("#sComment2").value = s.comment || ""; $("#sAlbumFolder").value = s.albumFolder || "";
   $("#sLibrary").value = s.libraryFolder; $("#sAlbum").value = s.album; $("#sAlbumArtist").value = s.albumArtist;
-  $("#sGenre").value = s.genre; $("#sDiscTotal").value = s.discTotal; $("#sTracker").value = s.trackerUrl; $("#sConvert").value = s.convertTo; $("#sExplicit").value = s.explicitDefault || ""; $("#sMp3").value = s.mp3ToM4a || "never";
+  $("#sGenre").value = s.genre; $("#sDiscTotal").value = s.discTotal; $("#sTracker").value = s.trackerUrl; $("#sConvert").value = s.convertTo; $("#sExplicit").value = s.explicitDefault || ""; $("#sMp3").value = s.mp3ToM4a || "never"; $("#sAutoUpdate").value = s.autoUpdate ? "auto" : "ask";
   applyMode();
   renderSlotRows();
   $("#artistList").innerHTML = [...new Set(s.slots.map(x => x.artist).filter(Boolean))].map(a => `<option value="${esc(a)}">`).join("");
@@ -1336,7 +1361,7 @@ $("#saveSettings").onclick = async () => {
     libraryFolder: $("#sLibrary").value.trim(), albumFolder: $("#sAlbumFolder").value.trim(),
     album: $("#sAlbum").value, albumArtist: $("#sAlbumArtist").value,
     genre: $("#sGenre").value, discTotal: +$("#sDiscTotal").value || 100, trackerUrl: $("#sTracker").value.trim(),
-    convertTo: $("#sConvert").value, explicitDefault: $("#sExplicit").value, mp3ToM4a: $("#sMp3").value, slots: S.settings.slots,
+    convertTo: $("#sConvert").value, explicitDefault: $("#sExplicit").value, mp3ToM4a: $("#sMp3").value, autoUpdate: $("#sAutoUpdate").value === "auto", slots: S.settings.slots,
   });
   S.folders = {}; S.queue.forEach(q => { q._scan = null; q.folderPicked = false; });
   fillSettings(); fillTrackerSelects();
@@ -1358,11 +1383,54 @@ $$("nav button").forEach(b => b.onclick = () => {
 });
 $("#cvArtist").addEventListener("change", () => $("#cvArtist").dataset.touched = "1");
 
+/* ------------------------------------------------------------ updates */
+const U = { info: null, appMode: false };
+async function checkForUpdate(force) {
+  try {
+    U.info = await api("/api/update-check" + (force ? "?force=1" : ""));
+  } catch (e) {
+    if (force) $("#updateStatus").textContent = "Couldn't reach GitHub to check: " + e.message;
+    return null;
+  }
+  const i = U.info;
+  $("#updateStatus").textContent = i.available ? `v${i.latest} is out (you have v${i.current}).` : `You're on the latest version (v${i.current}).`;
+  if (i.available) {
+    $("#updateText").textContent = `Local Files Tagger v${i.latest} is out (you have v${i.current}).`;
+    $("#updateBar").hidden = false;
+  }
+  return i;
+}
+async function installUpdate() {
+  if (!U.info || !U.info.available) return;
+  $("#updateCoverText").innerHTML = `<span class="spin"></span> Updating to v${esc(U.info.latest)}…<br><small class="muted">Your settings, covers and songs stay as they are.</small>`;
+  $("#updateCover").hidden = false;
+  try {
+    const r = await api("/api/update-install", {});
+    if (!r.updated) { $("#updateCover").hidden = true; $("#updateBar").hidden = true; return toast("Already up to date"); }
+    $("#updateCoverText").innerHTML = `Updated to v${esc(r.version)}. The app is reopening…` +
+      (U.appMode ? "" : `<br><small class="muted">A new browser tab opens with it. You can close this one.</small>`);
+  } catch (e) {
+    $("#updateCover").hidden = true;
+    toast("Update failed: " + e.message, true);
+  }
+}
+$("#updateNow").onclick = installUpdate;
+$("#updateLater").onclick = () => $("#updateBar").hidden = true;
+$("#updateNotes").onclick = () => U.info && api("/api/open-url", { url: U.info.page }).catch(e => toast(e.message, true));
+$("#checkUpdates").onclick = async () => {
+  $("#updateStatus").innerHTML = '<span class="spin"></span> Checking…';
+  const i = await checkForUpdate(true);
+  if (i && i.available) toast(`v${i.latest} is out. Press "Update now" at the top.`);
+};
+
 (async function boot() {
   const st = await api("/api/state");
   S.settings = st.settings;
+  U.appMode = st.appMode;
+  $("#version").textContent = "v" + st.version;
   fillSettings();
   showForm(false);
+  checkForUpdate(false).then(i => { if (i && i.available && S.settings.autoUpdate) installUpdate(); });
   await loadTrackers();
 })();
 </script>
