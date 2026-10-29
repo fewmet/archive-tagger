@@ -262,6 +262,12 @@
                 <label class="f"><span>Year</span><input id="year" inputmode="numeric"></label>
                 <label class="f"><span>Genre</span><input id="genre"></label>
               </div>
+              <div class="grid2">
+                <label class="f"><span>Explicit</span>
+                  <select id="explicit"><option value="">Not marked</option><option value="explicit">Explicit (E)</option><option value="clean">Clean</option></select>
+                </label>
+                <div class="muted" id="explicitHint" style="align-self:end;font-size:12px"></div>
+              </div>
               <div class="warnText am" id="trackWarn" hidden></div>
             </div>
 
@@ -358,6 +364,9 @@
       <div class="grid2">
         <label class="f"><span>Default genre</span><input id="sGenre"></label>
         <label class="f"><span>Tracker site</span><input id="sTracker"></label>
+        <label class="f"><span>Explicit: new songs start as</span>
+          <select id="sExplicit"><option value="">Not marked</option><option value="explicit">Explicit (E)</option><option value="clean">Clean</option></select>
+        </label>
         <label class="f"><span>WAV / FLAC / other files get converted to</span>
           <select id="sConvert"><option value="mp3">MP3, 320 kbps</option><option value="aac">M4A, AAC 256 kbps</option><option value="alac">M4A, Apple Lossless (bigger files)</option></select>
         </label>
@@ -787,6 +796,7 @@ function addInfos(infos) {
       ver: "", aka: "", note: "", featType: "feat", feat: "", prod: "", mainArtist: "",
       folder: "", customFolder: "", folderPicked: false, release: "Unreleased", dtrack: "",
       artistEdited: false, albumEdited: false,
+      explicit: info.explicit || S.settings.explicitDefault || "",
     };
     if (disco()) {
       // pull the details out of the file name, e.g. "Song [V2] (feat. X) (prod. Y) (NO TAGS edit)"
@@ -852,7 +862,8 @@ async function select(id) {
     ? `${item.ext} files can't hold these tags, so a tagged ${outExt} is made in the folder. The original stays where it is.`
     : `Apple Music can't read tags in ${item.ext} files, so a tagged ${outExt} copy will be made next to it. The original stays untouched.`;
   renderSlots();
-  ["title", "artist", "disc", "year", "genre", "album", "albumArtist", "ver", "aka", "note", "featType", "feat", "prod", "mainArtist", "release", "dtrack"].forEach(k => $("#" + k).value = item[k] ?? "");
+  ["title", "artist", "disc", "year", "genre", "album", "albumArtist", "ver", "aka", "note", "featType", "feat", "prod", "mainArtist", "release", "dtrack", "explicit"].forEach(k => $("#" + k).value = item[k] ?? "");
+  explicitHint(item);
   if (disco()) { renderFolders(); loadFolders(item); }
   $("#search").value = "";
   if (disco()) { /* no disc/track numbers in this mode */ }
@@ -862,10 +873,20 @@ async function select(id) {
   await loadForTracker(item);
 }
 
+// Apple Music only shows the E on .m4a files; Spotify never shows it on local files
+function explicitHint(it) {
+  if (!it) return;
+  const out = it.needsConvert ? ((S.settings.convertTo || "mp3") === "mp3" ? ".mp3" : ".m4a") : it.ext;
+  $("#explicitHint").textContent = !it.explicit ? ""
+    : out === ".m4a" ? "Apple Music will show the E on this song."
+    : "Saved in the file, but Apple Music only shows the E on .m4a files, so it won't show for this .mp3.";
+}
+$("#explicit").addEventListener("change", () => { if (!S.current) return; S.current.explicit = $("#explicit").value; explicitHint(S.current); });
+
 function stash() {
   const it = S.current;
   if (!it || $("#form").hidden) return;
-  ["title", "artist", "year", "genre", "album", "albumArtist", "ver", "aka", "note", "featType", "feat", "prod", "mainArtist", "release", "customFolder"].forEach(k => it[k] = $("#" + k).value);
+  ["title", "artist", "year", "genre", "album", "albumArtist", "ver", "aka", "note", "featType", "feat", "prod", "mainArtist", "release", "customFolder", "explicit"].forEach(k => it[k] = $("#" + k).value);
   it.dtrack = +$("#dtrack").value || "";
   it.disc = +$("#disc").value || it.disc;
   it.track = +$("#track").value || it.track;
@@ -1082,13 +1103,13 @@ async function save() {
     payload = {
       path: it.path, title: n.titleTag, artist: it.artist, disc: it.disc, track: it.dtrack || 0,
       year: it.year, genre: it.genre, album: it.album, albumArtist: it.albumArtist,
-      era: it.era, coverKey: coverKeyOf(it), coverOverride: it.oneOff, folder: f.rel, fileName: n.file,
+      era: it.era, coverKey: coverKeyOf(it), coverOverride: it.oneOff, folder: f.rel, fileName: n.file, explicit: it.explicit,
     };
   } else {
     payload = {
       path: it.path, title: it.title, artist: it.artist, disc: it.disc, track: it.track,
       year: it.year, genre: it.genre, album: it.album, albumArtist: it.albumArtist,
-      era: it.era, coverKey: coverKeyOf(it), coverOverride: it.oneOff,
+      era: it.era, coverKey: coverKeyOf(it), coverOverride: it.oneOff, explicit: it.explicit,
     };
   }
   it.status = "busy"; $("#saveBtn").disabled = true; $("#saveBtn").innerHTML = '<span class="spin"></span> Tagging…';
@@ -1281,7 +1302,7 @@ function fillSettings() {
   $("#sFormat").value = s.format || "discography"; $("#sAfter").value = s.afterTag || "move";
   $("#sComment").value = $("#sComment2").value = s.comment || ""; $("#sAlbumFolder").value = s.albumFolder || "";
   $("#sLibrary").value = s.libraryFolder; $("#sAlbum").value = s.album; $("#sAlbumArtist").value = s.albumArtist;
-  $("#sGenre").value = s.genre; $("#sDiscTotal").value = s.discTotal; $("#sTracker").value = s.trackerUrl; $("#sConvert").value = s.convertTo;
+  $("#sGenre").value = s.genre; $("#sDiscTotal").value = s.discTotal; $("#sTracker").value = s.trackerUrl; $("#sConvert").value = s.convertTo; $("#sExplicit").value = s.explicitDefault || "";
   applyMode();
   renderSlotRows();
   $("#artistList").innerHTML = [...new Set(s.slots.map(x => x.artist).filter(Boolean))].map(a => `<option value="${esc(a)}">`).join("");
@@ -1295,7 +1316,7 @@ $("#saveSettings").onclick = async () => {
     libraryFolder: $("#sLibrary").value.trim(), albumFolder: $("#sAlbumFolder").value.trim(),
     album: $("#sAlbum").value, albumArtist: $("#sAlbumArtist").value,
     genre: $("#sGenre").value, discTotal: +$("#sDiscTotal").value || 100, trackerUrl: $("#sTracker").value.trim(),
-    convertTo: $("#sConvert").value, slots: S.settings.slots,
+    convertTo: $("#sConvert").value, explicitDefault: $("#sExplicit").value, slots: S.settings.slots,
   });
   S.folders = {}; S.queue.forEach(q => { q._scan = null; q.folderPicked = false; });
   fillSettings(); fillTrackerSelects();

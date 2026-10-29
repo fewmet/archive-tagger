@@ -66,6 +66,7 @@ DEFAULT_SETTINGS = {
     "genre": "Hip-Hop/Rap",
     "trackerUrl": "https://tracker-player.onrender.com",
     "convertTo": "mp3",          # mp3 (320k), aac (256k) or alac (lossless)
+    "explicitDefault": "",       # what new songs start as: "" (not marked), "explicit" or "clean"
     "lastSlot": 1,
     "eraFolders": {},            # tracker key -> {era: folder you picked for it}
     # artist slots (disc number is only used in album mode)
@@ -443,7 +444,32 @@ def inspect_file(path):
         log(f"inspect {path}: {e}")
     if not info["title"]:
         info["title"] = clean_title_from_name(path)
+    info["explicit"] = read_advisory(path)
     return info
+
+
+# Explicit / clean mark, the way iTunes stores it: 1 = explicit, 2 = clean, nothing = not marked.
+# .m4a uses the "rtng" atom (Apple Music shows the E from this). .mp3 gets a TXXX:ITUNESADVISORY
+# frame, which other players read (Apple Music itself only shows the E on .m4a files).
+ADVISORY = {"explicit": 1, "clean": 2}
+
+
+def read_advisory(path):
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext == ".m4a":
+            from mutagen.mp4 import MP4
+            v = (MP4(path).tags or {}).get("rtng")
+            n = int(v[0]) if v else 0
+        elif ext == ".mp3":
+            from mutagen.id3 import ID3
+            fr = ID3(path).getall("TXXX:ITUNESADVISORY")
+            n = int(str(fr[0].text[0]).strip() or 0) if fr else 0
+        else:
+            return ""
+    except Exception:
+        return ""
+    return "explicit" if n in (1, 4) else "clean" if n == 2 else ""
 
 
 def write_tags(path, t, cover_bytes):
@@ -453,9 +479,10 @@ def write_tags(path, t, cover_bytes):
     track = int(t["track"]) if t.get("track") else 0
     year = str(t.get("year") or "").strip()
     comment = str(t.get("comment") or "").strip()
+    advisory = ADVISORY.get(str(t.get("explicit") or "").lower())
 
     if ext == ".mp3":
-        from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TPE1, TPE2, TALB, TRCK, TPOS, TCON, TDRC, APIC, COMM
+        from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TPE1, TPE2, TALB, TRCK, TPOS, TCON, TDRC, APIC, COMM, TXXX
         try:
             tags = ID3(path)
         except ID3NoHeaderError:
@@ -479,6 +506,9 @@ def write_tags(path, t, cover_bytes):
             tags.add(TDRC(encoding=3, text=year))
         if comment:
             tags.add(COMM(encoding=3, lang="eng", desc="", text=comment))
+        tags.delall("TXXX:ITUNESADVISORY")
+        if advisory:
+            tags.add(TXXX(encoding=3, desc="ITUNESADVISORY", text=str(advisory)))
         if cover_bytes:
             tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover_bytes))
         tags.save(path, v2_version=3)  # 2.3 is what Apple Music on Windows reads best
@@ -513,6 +543,10 @@ def write_tags(path, t, cover_bytes):
         elif "\xa9day" in tg:
             del tg["\xa9day"]
         tg["cpil"] = False
+        if advisory:
+            tg["rtng"] = [advisory]
+        elif "rtng" in tg:
+            del tg["rtng"]
         if cover_bytes:
             tg["covr"] = [MP4Cover(cover_bytes, imageformat=MP4Cover.FORMAT_JPEG)]
         f.save()
@@ -680,6 +714,7 @@ def tag_into_folder(p, s, cover):
         "year": p.get("year", ""),
         "track": p.get("track") or 0,
         "comment": s.get("comment", ""),
+        "explicit": p.get("explicit", ""),
     }
     write_tags(dst, t, cover)
     remember_era_folder(p.get("coverKey"), p.get("era"), p.get("folder"))
@@ -729,6 +764,7 @@ def tag_file(p):
         "discTotal": s.get("discTotal", 100),
         "track": p["track"],
         "comment": s.get("comment", ""),
+        "explicit": p.get("explicit", ""),
     }
     write_tags(target, t, cover)
     remember_track(p["disc"], p["track"])

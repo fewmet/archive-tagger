@@ -45,6 +45,8 @@ Tagging
 3. Check "Where it goes". It picks the era's folder if you have one, or makes the next numbered one
    ("26. COCOON sessions"). Features go to Features\..., and you can pick any other folder from the list.
    Folders whose songs are numbered (01., 02., ...) get the next number automatically.
+   Explicit: pick "Explicit (E)", "Clean" or "Not marked" for the song. Settings sets what new songs start as.
+   Apple Music only shows the E on .m4a files (it ignores it on .mp3), and Spotify doesn't show it on local files.
 4. The box under it shows the exact file name and tags. Press "Tag & file it" (or Ctrl+S, Cmd+S on a Mac).
 
 Covers tab: set your own cover for each era. An era without one uses the tracker's cover.
